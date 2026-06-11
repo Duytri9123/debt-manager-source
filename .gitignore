@@ -38,12 +38,12 @@ ENV/
 
 # PyInstaller
 *.manifest
-*.spec
 
 # Installer
 Output/
 installer/Output/
 *.log
+*.exe
 
 # Database files (local development)
 *.db
