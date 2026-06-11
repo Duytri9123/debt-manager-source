@@ -1,0 +1,19 @@
+# Python Dependencies for B2B Management App
+# Python + PySide6 (Native) + SQLite + Excel
+
+# GUI Framework
+PySide6>=6.6.0
+PySide6-Addons>=6.6.0
+PySide6-Essentials>=6.6.0
+
+# Excel Processing
+openpyxl>=3.1.2
+
+# Database (built-in sqlite3)
+# No additional packages needed
+
+# Build to .exe
+pyinstaller>=6.3.0
+
+# Utilities
+requests>=2.31.0

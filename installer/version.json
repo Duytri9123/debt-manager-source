@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "minimum_supported_version": "1.0.0",
+  "download_url": "https://github.com/yourusername/b2b-management/releases/latest/download/MyApp_Setup.exe",
+  "sha256": "PLACEHOLDER_UPDATE_AFTER_BUILD",
+  "mandatory": false,
+  "release_notes": [
+    "Initial release",
+    "B2B Order Management",
+    "Debt Tracking & Payment Management",
+    "Customer Management",
+    "Product Management",
+    "Excel Import/Export",
+    "SQLite Database (Offline)",
+    "Modern PySide6 UI with Tailwind-like design",
+    "Auto-update system with rollback support"
+  ],
+  "published_at": "2026-06-12T00:00:00",
+  "file_size": 52428800
+}
