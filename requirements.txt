@@ -17,3 +17,6 @@ pyinstaller>=6.3.0
 
 # Utilities
 requests>=2.31.0
+
+# Release Publishing
+# requests already listed above

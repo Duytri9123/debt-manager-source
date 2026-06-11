@@ -99,18 +99,20 @@ echo ========================================
 echo  Build Complete!
 echo ========================================
 echo.
+echo Release artifacts in %OUTPUT_DIR%\
+echo.
+dir /B %OUTPUT_DIR%
+echo.
+echo ========================================
+echo  Opening Output folder...
+echo ========================================
+start %OUTPUT_DIR%
+echo.
 echo Next Steps:
 echo 1. Test %OUTPUT_DIR%\%APP_NAME%_Setup.exe locally
-echo 2. Upload to GitHub Releases:
+echo 2. Run publish_release.bat to publish to GitHub Releases
+echo    OR manually upload to:
 echo    https://github.com/Duytri9123/debt-manager-release/releases/new
-echo.
-echo    Upload these files:
-echo    - %OUTPUT_DIR%\%APP_NAME%_Setup.exe
-echo    - %OUTPUT_DIR%\version.json
-echo.
-echo    Create release with:
-echo    - Tag: v%VERSION%
-echo    - Title: Debt Manager v%VERSION%
 echo.
 echo ========================================
 pause
