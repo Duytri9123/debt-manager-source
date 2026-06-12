@@ -16,19 +16,27 @@ class CustomerService:
         
     def get_all(self, search: str = "", is_active: bool = True) -> List[Dict]:
         """Get all customers with optional filtering"""
-        query = "SELECT * FROM customers WHERE 1=1"
+        query = """
+            SELECT c.*,
+                   (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) as orders_count,
+                   (SELECT COALESCE(SUM(o.grand_total), 0) FROM orders o WHERE o.customer_id = c.id) as total_order_value,
+                   (SELECT COALESCE(SUM(d.remaining_amount), 0) FROM debts d WHERE d.customer_id = c.id AND d.status IN ('pending', 'partial')) as remaining_debt,
+                   0 as purchase_invoices_count
+            FROM customers c
+            WHERE 1=1
+        """
         params = []
         
         if search:
-            query += " AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)"
+            query += " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.address LIKE ?)"
             search_param = f"%{search}%"
-            params.extend([search_param, search_param, search_param])
+            params.extend([search_param, search_param, search_param, search_param])
             
         if is_active is not None:
-            query += " AND is_active = ?"
+            query += " AND c.is_active = ?"
             params.append(1 if is_active else 0)
             
-        query += " ORDER BY name ASC"
+        query += " ORDER BY c.created_at DESC"
         return self.db.fetch_all(query, tuple(params))
         
     def get_by_id(self, customer_id: int) -> Optional[Dict]:

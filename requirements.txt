@@ -12,6 +12,10 @@ openpyxl>=3.1.2
 # Database (built-in sqlite3)
 # No additional packages needed
 
+# Web Server
+Flask>=3.0.0
+flask-cors>=4.0.0
+
 # Build to .exe
 pyinstaller>=6.3.0
 

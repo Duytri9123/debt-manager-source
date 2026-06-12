@@ -1,255 +1,1366 @@
 # -*- coding: utf-8 -*-
-"""
-Orders Page - Native PySide6 with modern design
-Matches Vue.js B2BOrders/Index.vue
-"""
+"""B2B orders page - mirrors Admin/B2BOrders/Index.vue."""
+from PySide6.QtCore import QDate, QStringListModel, Qt
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QFrame, QPushButton, QLineEdit, QDateEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
-    QScrollArea, QMessageBox, QDialog, QFormLayout, QComboBox
+    QAbstractItemView,
+    QAbstractSpinBox,
+    QCompleter,
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QFont
-
-import os
 
 
 class OrdersPage(QWidget):
-    """B2B Orders page (matches Vue.js B2BOrders/Index.vue)"""
-    
+    """B2B order tracking page."""
+
     def __init__(self, db):
         super().__init__()
         self.db = db
+        self.orders = []
         self.init_ui()
-        
+
     def init_ui(self):
-        """Initialize UI"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(20)
-        
-        # Stats cards
-        stats_layout = self.create_stats_cards()
-        main_layout.addLayout(stats_layout)
-        
-        # Filter bar
-        filter_bar = self.create_filter_bar()
-        main_layout.addWidget(filter_bar)
-        
-        # Table
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
+
+        layout.addLayout(self.create_header())
+        layout.addLayout(self.create_stats_cards())
+        layout.addWidget(self.create_filters())
         self.table = self.create_table()
-        main_layout.addWidget(self.table, 1)
-        
-        # Load data
+        layout.addWidget(self.table, 1)
         self.refresh_data()
-        
-    def create_stats_cards(self):
-        """Create stats cards row"""
-        layout = QGridLayout()
-        layout.setSpacing(16)
-        
-        self.stat_total_orders = self.create_mini_stat_card("Tổng đơn", "0", "📦", "indigo")
-        layout.addWidget(self.stat_total_orders, 0, 0)
-        
-        self.stat_customers = self.create_mini_stat_card("Khách hàng", "0", "👥", "blue")
-        layout.addWidget(self.stat_customers, 0, 1)
-        
-        self.stat_revenue = self.create_mini_stat_card("Doanh thu", "0đ", "💰", "emerald")
-        layout.addWidget(self.stat_revenue, 0, 2)
-        
-        self.stat_profit = self.create_mini_stat_card("Tổng lãi", "0đ", "📈", "amber")
-        layout.addWidget(self.stat_profit, 0, 3)
-        
+
+    def create_header(self):
+        layout = QHBoxLayout()
+        text_block = QVBoxLayout()
+        title = QLabel("Theo dõi Đơn hàng KD")
+        title.setObjectName("contentTitle")
+        title.setFont(QFont("Segoe UI", 18, QFont.Bold))
+        subtitle = QLabel("Quản lý đơn hàng kinh doanh B2B - thay thế Excel")
+        subtitle.setObjectName("contentSubtitle")
+        text_block.addWidget(title)
+        text_block.addWidget(subtitle)
+        layout.addLayout(text_block)
+        layout.addStretch()
+
+        import_button = QPushButton("Import Excel")
+        import_button.setObjectName("outlineButton")
+        import_button.setFixedWidth(132)
+        import_button.setFixedHeight(38)
+        import_button.clicked.connect(self.import_excel)
+        layout.addWidget(import_button)
+
+        add_button = QPushButton("+  Tạo đơn hàng")
+        add_button.setObjectName("primaryButton")
+        add_button.setFixedWidth(142)
+        add_button.setFixedHeight(38)
+        add_button.clicked.connect(self.create_order)
+        layout.addWidget(add_button)
         return layout
-        
-    def create_mini_stat_card(self, title, value, icon, color):
-        """Create mini stat card"""
-        frame = QFrame()
-        frame.setObjectName(f"statCard{color.capitalize()}")
-        frame.setMinimumHeight(80)
-        
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(4)
-        
-        title_label = QLabel(f"{icon} {title}")
-        title_label.setObjectName("statTitle")
-        title_label.setFont(QFont("Segoe UI", 11))
-        layout.addWidget(title_label)
-        
-        value_label = QLabel(value)
-        value_label.setObjectName("statValue")
-        value_label.setFont(QFont("Segoe UI", 20, QFont.Bold))
-        layout.addWidget(value_label)
-        
-        frame.value_label = value_label
-        return frame
-        
-    def create_filter_bar(self) -> QFrame:
-        """Create filter bar (search + dates + buttons)"""
+
+    def create_stats_cards(self):
+        layout = QGridLayout()
+        layout.setSpacing(12)
+        self.stat_total_orders = self.create_stat_card("Tổng đơn", "0", "#4F46E5")
+        self.stat_customers = self.create_stat_card("Khách hàng", "0", "#2563EB")
+        self.stat_revenue = self.create_stat_card("Doanh thu", "0đ", "#059669")
+        layout.addWidget(self.stat_total_orders, 0, 0)
+        layout.addWidget(self.stat_customers, 0, 1)
+        layout.addWidget(self.stat_revenue, 0, 2)
+        return layout
+
+    def create_stat_card(self, title, value, color):
         frame = QFrame()
         frame.setObjectName("statCard")
-        frame.setFixedHeight(60)
-        
+        frame.setMinimumHeight(86)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(16, 14, 16, 14)
+        label = QLabel(title.upper())
+        label.setObjectName("statTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("statValue")
+        value_label.setStyleSheet(f"color: {color};")
+        frame.value_label = value_label
+        layout.addWidget(label)
+        layout.addWidget(value_label)
+        return frame
+
+    def create_filters(self):
+        frame = QFrame()
+        frame.setObjectName("filterBar")
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(16, 10, 16, 10)
-        
-        # Search
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
+
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Tìm mã đơn, tên khách...")
-        self.search_input.setFixedWidth(300)
-        layout.addWidget(self.search_input)
-        
-        # Date filters
+        self.search_input.setPlaceholderText("Tìm mã đơn, tên khách...")
+        self.search_input.returnPressed.connect(self.refresh_data)
+        layout.addWidget(self.search_input, 1)
+
         self.from_date = QDateEdit()
         self.from_date.setCalendarPopup(True)
-        self.from_date.setDate(QDate.currentDate().addDays(-30))
-        self.from_date.setFixedWidth(130)
+        self.from_date.setDisplayFormat("dd/MM/yyyy")
+        self.from_date.setDate(QDate.currentDate().addMonths(-12))
+        self.from_date.setFixedHeight(38)
+        self.from_date.setFixedWidth(160)
         layout.addWidget(self.from_date)
-        
-        label_to = QLabel("→")
-        label_to.setStyleSheet("color: #6B7280;")
-        layout.addWidget(label_to)
-        
+
         self.to_date = QDateEdit()
         self.to_date.setCalendarPopup(True)
+        self.to_date.setDisplayFormat("dd/MM/yyyy")
         self.to_date.setDate(QDate.currentDate())
-        self.to_date.setFixedWidth(130)
+        self.to_date.setFixedHeight(38)
+        self.to_date.setFixedWidth(160)
         layout.addWidget(self.to_date)
-        
-        layout.addStretch()
-        
-        # Import Excel button
-        btn_import = QPushButton("📥 Import Excel")
-        btn_import.setObjectName("outlineButton")
-        btn_import.setFixedWidth(130)
-        btn_import.clicked.connect(self.import_excel)
-        layout.addWidget(btn_import)
-        
-        # Add order button
-        btn_add = QPushButton("➕ Tạo đơn hàng")
-        btn_add.setObjectName("primaryButton")
-        btn_add.setFixedWidth(140)
-        btn_add.clicked.connect(self.create_order)
-        layout.addWidget(btn_add)
-        
-        # Apply filter button
-        btn_filter = QPushButton("🔍 Lọc")
-        btn_filter.setObjectName("successButton")
-        btn_filter.setFixedWidth(80)
-        btn_filter.clicked.connect(self.refresh_data)
-        layout.addWidget(btn_filter)
-        
+
+        filter_button = QPushButton("Lọc")
+        filter_button.setObjectName("outlineButton")
+        filter_button.setFixedWidth(70)
+        filter_button.clicked.connect(self.refresh_data)
+        layout.addWidget(filter_button)
+
+        reset_button = QPushButton("Reset")
+        reset_button.setObjectName("outlineButton")
+        reset_button.setFixedWidth(80)
+        reset_button.clicked.connect(self.reset_filters)
+        layout.addWidget(reset_button)
         return frame
-        
-    def create_table(self) -> QTableWidget:
-        """Create orders table"""
+
+    def create_table(self):
         table = QTableWidget()
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels([
-            "Mã đơn", "Khách hàng", "Ngày đặt", "Số SP", 
-            "Trước thuế", "Thuế 10%", "Tổng sau thuế", "Tiền lãi"
+            "Mã đơn", "Khách hàng", "Tên đơn hàng", "Ngày đặt",
+            "Ngày xuất", "Trạng thái", "Số SP", "Tổng sau thuế",
         ])
-        
-        # Set column widths
         header = table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
-        
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        header.setSectionResizeMode(5, QHeaderView.Interactive)
+        header.setSectionResizeMode(6, QHeaderView.Interactive)
+        header.setSectionResizeMode(7, QHeaderView.Interactive)
+        table.setColumnWidth(0, 160) # Mã đơn
+        table.setColumnWidth(1, 180) # Khách hàng
+        table.setColumnWidth(3, 110) # Ngày đặt
+        table.setColumnWidth(4, 110) # Ngày xuất
+        table.setColumnWidth(5, 120) # Trạng thái
+        table.setColumnWidth(6, 90)  # Số SP
+        table.setColumnWidth(7, 130) # Tổng sau thuế
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
-        
+        table.setShowGrid(False)
+        table.setFocusPolicy(Qt.NoFocus)
+        table.cellClicked.connect(self.open_order_detail)
         return table
-        
-    def format_currency(self, amount):
-        """Format currency"""
-        return f"{amount:,.0f}đ"
-        
+
     def refresh_data(self):
-        """Refresh orders data"""
         try:
             from src.services.order_service import OrderService
-            
-            order_service = OrderService(self.db)
-            
-            # Get filter values
-            search = self.search_input.text()
-            from_date = self.from_date.date().toString("yyyy-MM-dd")
-            to_date = self.to_date.date().toString("yyyy-MM-dd")
-            
-            # Get orders
-            orders = order_service.get_all(search=search, from_date=from_date, to_date=to_date)
-            stats = order_service.get_stats()
-            
-            # Update stats
-            self.stat_total_orders.value_label.setText(str(stats.get('total_orders', 0)))
-            self.stat_customers.value_label.setText(str(stats.get('total_customers', 0)))
-            self.stat_revenue.value_label.setText(self.format_currency(stats.get('total_revenue', 0)))
-            self.stat_profit.value_label.setText(self.format_currency(stats.get('total_profit', 0)))
-            
-            # Update table
-            self.table.setRowCount(0)
-            
-            for order in orders:
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-                
-                self.table.setItem(row, 0, QTableWidgetItem(order.get('order_number', '')))
-                self.table.setItem(row, 1, QTableWidgetItem(order.get('customer_name', '')))
-                
-                date_str = order.get('created_at', '')[:10] if order.get('created_at') else ''
-                self.table.setItem(row, 2, QTableWidgetItem(date_str))
-                
-                items_count = len(order.get('items', []))
-                self.table.setItem(row, 3, QTableWidgetItem(str(items_count)))
-                
-                self.table.setItem(row, 4, QTableWidgetItem(self.format_currency(order.get('total_before_tax', 0))))
-                self.table.setItem(row, 5, QTableWidgetItem(self.format_currency(order.get('tax_amount', 0))))
-                self.table.setItem(row, 6, QTableWidgetItem(self.format_currency(order.get('grand_total', 0))))
-                self.table.setItem(row, 7, QTableWidgetItem(self.format_currency(order.get('total_profit', 0))))
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Không thể tải đơn hàng: {str(e)}")
-            
+
+            service = OrderService(self.db)
+            self.orders = service.get_all(
+                search=self.search_input.text().strip(),
+                from_date=self.from_date.date().toString("yyyy-MM-dd"),
+                to_date=self.to_date.date().toString("yyyy-MM-dd"),
+            )
+            stats = service.get_stats()
+
+            self.stat_total_orders.value_label.setText(str(stats.get("total_orders", 0)))
+            self.stat_customers.value_label.setText(str(stats.get("total_customers", 0)))
+            self.stat_revenue.value_label.setText(self.format_currency(stats.get("total_revenue", 0)))
+            self.render_table(self.orders)
+        except Exception as exc:
+            QMessageBox.critical(self, "Lỗi", f"Không thể tải đơn hàng: {exc}")
+
+    def render_table(self, orders):
+        self.table.setRowCount(0)
+        if not orders:
+            self.table.setRowCount(1)
+            item = QTableWidgetItem("Chưa có đơn hàng nào")
+            item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(0, 0, item)
+            self.table.setSpan(0, 0, 1, 8)
+            self.table.setRowHeight(0, 80)
+            return
+
+        for order in orders:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.table.setRowHeight(row, 44)
+
+            code_item = QTableWidgetItem(order.get("order_number", ""))
+            code_item.setData(Qt.UserRole, order.get("id"))
+            code_item.setForeground(QColor("#4F46E5"))
+            code_item.setFont(QFont("Consolas", 9, QFont.DemiBold))
+            self.table.setItem(row, 0, code_item)
+            self.table.setItem(row, 1, QTableWidgetItem(order.get("customer_name", "")))
+            self.table.setItem(row, 2, QTableWidgetItem(order.get("order_name") or "—"))
+            self.table.setItem(row, 3, QTableWidgetItem(self.format_date(order.get("created_at"))))
+            self.table.setItem(row, 4, QTableWidgetItem(self.format_date(order.get("delivery_date"))))
+            self.table.setCellWidget(row, 5, self.create_payment_badge(order))
+            self.table.setItem(row, 6, self.center_item(order.get("items_count") or 0))
+            self.table.setItem(row, 7, self.money_item(order.get("grand_total") or 0))
+
+    def create_payment_badge(self, order):
+        status = order.get("payment_status") or "unpaid"
+        if order.get("debt_status"):
+            status = {"paid": "paid", "partial": "partial"}.get(order.get("debt_status"), "unpaid")
+        labels = {
+            "paid": ("Đã TT", "success"),
+            "partial": ("Một phần", "warning"),
+            "unpaid": ("Chưa TT", "danger"),
+        }
+        text, kind = labels.get(status, ("Chưa TT", "danger"))
+        frame = QFrame()
+        frame.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignCenter)
+        label = QLabel(text)
+        label.setObjectName(f"badge{kind.capitalize()}")
+        label.setAlignment(Qt.AlignCenter)
+        label.setFixedHeight(24)
+        label.setFixedWidth(78)
+        layout.addWidget(label)
+        return frame
+
+    def reset_filters(self):
+        self.search_input.clear()
+        self.from_date.setDate(QDate.currentDate().addMonths(-12))
+        self.to_date.setDate(QDate.currentDate())
+        self.refresh_data()
+
     def import_excel(self):
-        """Import orders from Excel"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Import Excel", "", "Excel Files (*.xlsx *.xls)"
         )
-        
         if not file_path:
             return
-            
+
         try:
             from src.services.excel_service import ExcelService
             from src.services.order_service import OrderService
-            
-            excel_service = ExcelService()
-            order_service = OrderService(self.db)
-            
-            result = excel_service.import_orders_from_excel(file_path, order_service)
-            
-            QMessageBox.information(
-                self, "Import thành công",
-                f"Đã import {result.get('total', 0)} đơn hàng\n"
-                f"Thành công: {result.get('success', 0)}\n"
-                f"Lỗi: {result.get('failed', 0)}"
-            )
-            
+
+            parser = ExcelService()
+            result = parser.import_orders_from_excel(file_path)
+            service = OrderService(self.db)
+
+            imported = 0
+            failed = 0
+            for block in result.get("orders", []):
+                try:
+                    order_id = service.create(
+                        {
+                            "customer_name": block.get("customer"),
+                            "order_date": block.get("date"),
+                            "status": "delivered",
+                            "tax_rate": 10,
+                        },
+                        block.get("items", []),
+                    )
+                    self.db.execute(
+                        "UPDATE orders SET payment_status='paid' WHERE id=?",
+                        (order_id,),
+                    )
+                    imported += 1
+                except Exception:
+                    failed += 1
+
             self.refresh_data()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Import thất bại: {str(e)}")
-            
+            QMessageBox.information(
+                self,
+                "Import Excel",
+                f"Import thành công {imported} đơn" + (f", lỗi {failed} đơn." if failed else "."),
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Lỗi", f"Import thất bại: {exc}")
+
     def create_order(self):
-        """Create new order dialog"""
-        QMessageBox.information(self, "Thông báo", "Tính năng đang được phát triển")
+        dialog = OrderDialog(self)
+        if dialog.exec():
+            try:
+                from src.services.order_service import OrderService
+
+                service = OrderService(self.db)
+                service.create(dialog.get_order_data(), dialog.get_items())
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã tạo đơn hàng.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể tạo đơn hàng: {exc}")
+
+    def open_order_detail(self, row, _column):
+        item = self.table.item(row, 0)
+        if not item:
+            return
+        order_id = item.data(Qt.UserRole)
+        if not order_id:
+            return
+        dialog = OrderDetailDialog(self.db, order_id, self)
+        dialog.exec()
+        self.refresh_data()
+
+    @staticmethod
+    def center_item(value):
+        item = QTableWidgetItem(str(value))
+        item.setTextAlignment(Qt.AlignCenter)
+        return item
+
+    @staticmethod
+    def money_item(value):
+        item = QTableWidgetItem(OrdersPage.format_currency(value))
+        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        item.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
+        return item
+
+    @staticmethod
+    def format_currency(value):
+        return f"{float(value or 0):,.0f}đ"
+
+    @staticmethod
+    def format_date(value):
+        return value[:10] if value else "—"
+
+
+class OrderDetailDialog(QDialog):
+    """Read-only order detail with edit action."""
+
+    def __init__(self, db, order_id, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.order_id = order_id
+        self.setWindowTitle("Chi tiết đơn hàng")
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        self.setMinimumSize(1100, 720)
+        self.init_ui()
+
+    def load_order(self):
+        from src.services.order_service import OrderService
+
+        return OrderService(self.db).get_by_id(self.order_id) or {}
+
+    def init_ui(self):
+        self.order = self.load_order()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(16)
+
+        header = QHBoxLayout()
+        title = QLabel(self.order.get("order_name") or self.order.get("order_number") or "Chi tiết đơn hàng")
+        title.setObjectName("dialogTitle")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        header.addWidget(title)
+        header.addStretch()
+
+        edit = QPushButton("Chỉnh sửa")
+        edit.setObjectName("warningButton")
+        edit.clicked.connect(self.edit_order)
+        header.addWidget(edit)
+
+        close = QPushButton("Đóng")
+        close.setObjectName("outlineButton")
+        close.clicked.connect(self.accept)
+        header.addWidget(close)
+        layout.addLayout(header)
+
+        info = QFrame()
+        info.setObjectName("formCard")
+        info_layout = QGridLayout(info)
+        info_layout.setContentsMargins(16, 14, 16, 14)
+        info_layout.setHorizontalSpacing(24)
+        info_layout.setVerticalSpacing(10)
+
+        rows = [
+            ("Mã đơn", self.order.get("order_number") or "—"),
+            ("Khách hàng", self.order.get("customer_name") or "—"),
+            ("Số điện thoại", self.order.get("customer_phone") or "—"),
+            ("Ngày đặt", self.format_date(self.order.get("created_at"))),
+            ("Ngày xuất", self.format_date(self.order.get("delivery_date"))),
+            ("Trạng thái", self.status_label(self.order.get("status"))),
+            ("Thanh toán", self.payment_label(self.order.get("payment_status"))),
+            ("Tổng sau thuế", self.format_money(self.order.get("grand_total") or 0)),
+        ]
+        for index, (label, value) in enumerate(rows):
+            box = QVBoxLayout()
+            label_widget = QLabel(label)
+            label_widget.setObjectName("statTitle")
+            value_widget = QLabel(str(value))
+            value_widget.setFont(QFont("Segoe UI", 11, QFont.DemiBold))
+            box.addWidget(label_widget)
+            box.addWidget(value_widget)
+            info_layout.addLayout(box, index // 4, index % 4)
+        layout.addWidget(info)
+
+        notes = self.order.get("notes")
+        if notes:
+            note_label = QLabel(f"Ghi chú: {notes}")
+            note_label.setWordWrap(True)
+            note_label.setObjectName("contentSubtitle")
+            layout.addWidget(note_label)
+
+        table = QTableWidget()
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels([
+            "Mô tả chi tiết", "Mã hàng", "Xuất xứ", "Đơn vị",
+            "Số lượng", "Đơn giá", "Thành tiền", "Ghi chú",
+        ])
+        table.verticalHeader().setVisible(False)
+        table.setShowGrid(False)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        header_view = table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.Stretch)
+        for column in range(1, 8):
+            header_view.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+
+        items = self.order.get("items") or []
+        table.setRowCount(len(items) if items else 1)
+        if not items:
+            item = QTableWidgetItem("Chưa có dòng sản phẩm")
+            item.setTextAlignment(Qt.AlignCenter)
+            table.setItem(0, 0, item)
+            table.setSpan(0, 0, 1, 8)
+        else:
+            import json
+            for row, line in enumerate(items):
+                attrs_str = line.get("variant_attributes")
+                is_cat = False
+                if attrs_str:
+                    try:
+                        attrs = json.loads(attrs_str) if isinstance(attrs_str, str) else attrs_str
+                        if attrs.get("type") == "category":
+                            is_cat = True
+                    except Exception:
+                        pass
+                
+                if is_cat:
+                    # Tính tổng phụ của danh mục này cho đến danh mục tiếp theo
+                    cat_total = 0
+                    for j in range(row + 1, len(items)):
+                        next_line = items[j]
+                        next_attrs_str = next_line.get("variant_attributes")
+                        next_is_cat = False
+                        if next_attrs_str:
+                            try:
+                                next_attrs = json.loads(next_attrs_str) if isinstance(next_attrs_str, str) else next_attrs_str
+                                if next_attrs.get("type") == "category":
+                                    next_is_cat = True
+                            except Exception:
+                                pass
+                        if next_is_cat:
+                            break
+                        cat_total += float(next_line.get("line_total") or 0)
+                    
+                    cat_item = QTableWidgetItem(f"📁  {line.get('product_name') or ''}")
+                    cat_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    cat_item.setBackground(QColor("#FFFBEB"))
+                    cat_item.setForeground(QColor("#B45309"))
+                    table.setItem(row, 0, cat_item)
+                    table.setSpan(row, 0, 1, 6)
+                    
+                    # Style merged cells backgrounds
+                    for col in range(1, 6):
+                        empty_item = QTableWidgetItem("")
+                        empty_item.setBackground(QColor("#FFFBEB"))
+                        table.setItem(row, col, empty_item)
+                    
+                    total_item = QTableWidgetItem(self.format_money(cat_total))
+                    total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    total_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    total_item.setForeground(QColor("#B45309"))
+                    total_item.setBackground(QColor("#FFFBEB"))
+                    table.setItem(row, 6, total_item)
+                    
+                    note_item = QTableWidgetItem("")
+                    note_item.setBackground(QColor("#FFFBEB"))
+                    table.setItem(row, 7, note_item)
+                else:
+                    table.setItem(row, 0, QTableWidgetItem(line.get("product_name") or ""))
+                    table.setItem(row, 1, QTableWidgetItem(line.get("variant_sku") or ""))
+                    table.setItem(row, 2, QTableWidgetItem(line.get("origin") or ""))
+                    table.setItem(row, 3, QTableWidgetItem(line.get("unit") or ""))
+                    table.setItem(row, 4, self.center_item(line.get("quantity") or 0))
+                    table.setItem(row, 5, self.money_item(line.get("price") or 0))
+                    table.setItem(row, 6, self.money_item(line.get("line_total") or 0))
+                    table.setItem(row, 7, QTableWidgetItem(line.get("note") or ""))
+        layout.addWidget(table, 1)
+
+    def edit_order(self):
+        dialog = OrderDialog(self, self.order)
+        if dialog.exec():
+            try:
+                from src.services.order_service import OrderService
+
+                OrderService(self.db).update(self.order_id, dialog.get_order_data(), dialog.get_items())
+                QMessageBox.information(self, "Thành công", "Đã cập nhật đơn hàng.")
+                self.accept()
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể cập nhật đơn hàng: {exc}")
+
+    @staticmethod
+    def format_date(value):
+        return value[:10] if value else "—"
+
+    @staticmethod
+    def format_money(value):
+        return f"{float(value or 0):,.0f}đ"
+
+    @staticmethod
+    def status_label(status):
+        return {
+            "pending": "Chờ xử lý",
+            "processing": "Đang xử lý",
+            "delivered": "Đã giao",
+            "cancelled": "Đã hủy",
+        }.get(status or "pending", "Chờ xử lý")
+
+    @staticmethod
+    def payment_label(status):
+        return {
+            "paid": "Đã TT",
+            "partial": "Một phần",
+            "unpaid": "Chưa TT",
+        }.get(status or "unpaid", "Chưa TT")
+
+    @staticmethod
+    def center_item(value):
+        item = QTableWidgetItem(str(value))
+        item.setTextAlignment(Qt.AlignCenter)
+        return item
+
+    @staticmethod
+    def money_item(value):
+        item = QTableWidgetItem(OrderDetailDialog.format_money(value))
+        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        return item
+
+
+class DragDropTableWidget(QTableWidget):
+    """Table widget supporting drag-and-drop row reordering."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.dragged_row = -1
+        self.parent_dialog = None
+
+    def mousePressEvent(self, event):
+        col = self.columnAt(event.position().x())
+        if col == 0:  # Column 0 is the drag handle
+            row = self.rowAt(event.position().y())
+            if row >= 0:
+                self.dragged_row = row
+                self.setCurrentCell(row, 0)
+        super().mousePressEvent(event)
+
+    def dragEnterEvent(self, event):
+        if event.source() == self and self.dragged_row >= 0:
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.source() == self and self.dragged_row >= 0:
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if event.source() == self and self.dragged_row >= 0:
+            model_index = self.indexAt(event.position().toPoint())
+            target_row = model_index.row()
+            if target_row < 0:
+                target_row = self.rowCount() - 1
+
+            source_row = self.dragged_row
+            if source_row >= 0 and target_row >= 0 and source_row != target_row:
+                event.acceptProposedAction()
+                if self.parent_dialog and hasattr(self.parent_dialog, "move_row"):
+                    self.parent_dialog.move_row(source_row, target_row)
+            self.dragged_row = -1
+        else:
+            super().dropEvent(event)
+
+
+class OrderDialog(QDialog):
+    """Dialog for creating a B2B order with line items."""
+
+    def __init__(self, parent=None, order=None, initial_customer=None):
+        super().__init__(parent)
+        self.order = order or {}
+        self.initial_customer = initial_customer or {}
+        self.customer_lookup = []
+        self.customer_completer = None
+        self.setWindowTitle("Chỉnh sửa đơn hàng" if self.order else "Tạo đơn hàng mới")
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        self.setMinimumSize(900, 620)
+        self.resize(1180, 740)
+        self.init_ui()
+        if self.order:
+            self.populate_order()
+        elif self.initial_customer:
+            self.populate_customer()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
+
+        header_layout = QHBoxLayout()
+        title = QLabel("Chỉnh sửa đơn hàng" if self.order else "Tạo đơn hàng mới")
+        title.setObjectName("dialogTitle")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        self.full_button = QPushButton("Hiển thị full")
+        self.full_button.setObjectName("outlineButton")
+        self.full_button.setFixedWidth(124)
+        self.full_button.clicked.connect(self.toggle_fullscreen)
+        header_layout.addWidget(self.full_button)
+        layout.addLayout(header_layout)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setObjectName("dialogScroll")
+        content = QWidget()
+        content.setObjectName("dialogContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        customer_card = QFrame()
+        customer_card.setObjectName("formCard")
+        customer_layout = QVBoxLayout(customer_card)
+        customer_layout.setContentsMargins(14, 10, 14, 12)
+        customer_layout.setSpacing(8)
+
+        card_title = QLabel("Thông tin khách hàng")
+        card_title.setObjectName("sectionTitle")
+        customer_layout.addWidget(card_title)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+
+        self.customer_name = self.create_field("Tên khách hàng")
+        self.setup_customer_completer()
+        grid.addWidget(self.create_field_block("Tên khách hàng *", self.customer_name), 0, 0)
+
+        self.customer_phone = self.create_field("Số điện thoại")
+        grid.addWidget(self.create_field_block("Số điện thoại", self.customer_phone), 0, 1)
+
+        self.order_date = QDateEdit()
+        self.order_date.setCalendarPopup(True)
+        self.order_date.setDisplayFormat("dd/MM/yyyy")
+        self.order_date.setDate(QDate.currentDate())
+        self.order_date.setFixedHeight(38)
+        grid.addWidget(self.create_field_block("Ngày đặt *", self.order_date), 1, 0)
+
+        self.delivery_date = QDateEdit()
+        self.delivery_date.setCalendarPopup(True)
+        self.delivery_date.setDisplayFormat("dd/MM/yyyy")
+        self.delivery_date.setDate(QDate.currentDate())
+        self.delivery_date.setFixedHeight(38)
+        grid.addWidget(self.create_field_block("Ngày xuất", self.delivery_date), 1, 1)
+
+        self.notes = QTextEdit()
+        self.notes.setMaximumHeight(70)
+        self.notes.setPlaceholderText("Ghi chú...")
+        grid.addWidget(self.create_field_block("Ghi chú đơn hàng", self.notes), 2, 0, 1, 2)
+
+        for column in range(2):
+            grid.setColumnStretch(column, 1)
+        customer_layout.addLayout(grid)
+        content_layout.addWidget(customer_card)
+
+        order_card = QFrame()
+        order_card.setObjectName("formCard")
+        order_layout = QVBoxLayout(order_card)
+        order_layout.setContentsMargins(14, 10, 14, 12)
+        order_layout.setSpacing(8)
+
+        order_grid = QGridLayout()
+        order_grid.setHorizontalSpacing(12)
+        order_grid.setVerticalSpacing(8)
+
+        self.order_name = self.create_field("VD: Đơn tháng 5, Dự án ABC...")
+        order_grid.addWidget(self.create_field_block("Tên đơn hàng", self.order_name), 0, 0, 1, 2)
+
+        self.status_combo = QComboBox()
+        self.status_combo.addItem("Chờ xử lý", "pending")
+        self.status_combo.addItem("Đang xử lý", "processing")
+        self.status_combo.addItem("Đã giao", "delivered")
+        self.status_combo.addItem("Đã hủy", "cancelled")
+        self.status_combo.setFixedHeight(38)
+        order_grid.addWidget(self.create_field_block("Trạng thái", self.status_combo), 1, 0)
+        order_grid.setColumnStretch(0, 1)
+        order_grid.setColumnStretch(1, 1)
+        order_layout.addLayout(order_grid)
+
+        line_header = QHBoxLayout()
+        line_title = QLabel("Chi tiết sản phẩm")
+        line_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        line_header.addWidget(line_title)
+        line_header.addStretch()
+        
+        # Bổ sung nút Thêm danh mục
+        add_cat = QPushButton("📂  Thêm danh mục")
+        add_cat.setObjectName("outlineButton")
+        add_cat.clicked.connect(self.add_category_row)
+        line_header.addWidget(add_cat)
+
+        add_row = QPushButton("+  Thêm dòng")
+        add_row.setObjectName("outlineButton")
+        add_row.clicked.connect(self.add_item_row)
+        line_header.addWidget(add_row)
+        
+        remove_row = QPushButton("Xóa dòng")
+        remove_row.setObjectName("outlineButton")
+        remove_row.clicked.connect(self.remove_selected_row)
+        line_header.addWidget(remove_row)
+        order_layout.addLayout(line_header)
+
+        # Sử dụng DragDropTableWidget thay vì QTableWidget
+        self.items_table = DragDropTableWidget()
+        self.items_table.parent_dialog = self
+        self.items_table.setColumnCount(10)
+        self.items_table.setHorizontalHeaderLabels([
+            "Kéo", "TT", "Mô tả chi tiết *", "Mã hàng", "Xuất xứ", "Đơn vị",
+            "Số lượng", "Đơn giá", "Thành tiền", "Ghi chú",
+        ])
+        header = self.items_table.horizontalHeader()
+        for column in range(10):
+            header.setSectionResizeMode(column, QHeaderView.Interactive)
+        self.items_table.setColumnWidth(0, 40)   # Kéo
+        self.items_table.setColumnWidth(1, 40)   # TT
+        self.items_table.setColumnWidth(2, 300)  # Mô tả chi tiết *
+        self.items_table.setColumnWidth(3, 110)  # Mã hàng
+        self.items_table.setColumnWidth(4, 90)   # Xuất xứ
+        self.items_table.setColumnWidth(5, 90)   # Đơn vị
+        self.items_table.setColumnWidth(6, 100)  # Số lượng
+        self.items_table.setColumnWidth(7, 120)  # Đơn giá
+        self.items_table.setColumnWidth(8, 120)  # Thành tiền
+        self.items_table.setColumnWidth(9, 130)  # Ghi chú
+        self.items_table.verticalHeader().setVisible(False)
+        self.items_table.setShowGrid(False)
+        self.items_table.setMinimumHeight(260)
+        self.items_table.setMinimumWidth(940)
+        self.items_table.setFocusPolicy(Qt.NoFocus)
+        self.items_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        order_layout.addWidget(self.items_table, 1)
+        self.add_item_row()
+        content_layout.addWidget(order_card)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel = QPushButton("Hủy")
+        cancel.setObjectName("outlineButton")
+        cancel.clicked.connect(self.reject)
+        actions.addWidget(cancel)
+        save = QPushButton("Lưu đơn hàng" if self.order else "Tạo đơn hàng")
+        save.setObjectName("primaryButton")
+        save.clicked.connect(self.accept)
+        actions.addWidget(save)
+        layout.addLayout(actions)
+
+    def toggle_fullscreen(self):
+        if self.isMaximized():
+            self.showNormal()
+            self.full_button.setText("Hiển thị full")
+        else:
+            self.showMaximized()
+            self.full_button.setText("Thu nhỏ")
+
+    def create_field(self, placeholder: str) -> QLineEdit:
+        field = QLineEdit()
+        field.setPlaceholderText(placeholder)
+        field.setFixedHeight(38)
+        return field
+
+    def create_field_block(self, label: str, widget: QWidget) -> QWidget:
+        block = QWidget()
+        block.setObjectName("transparentBlock")
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        label_widget = QLabel(label)
+        label_widget.setObjectName("formLabel")
+        layout.addWidget(label_widget)
+        layout.addWidget(widget)
+        return block
+
+    def setup_customer_completer(self):
+        try:
+            from src.services.customer_service import CustomerService
+
+            root = self.parent()
+            db = None
+            while root is not None and db is None:
+                db = getattr(root, "db", None)
+                root = root.parent()
+            if db is None:
+                return
+
+            self.customer_lookup = CustomerService(db).get_all(is_active=True)
+            labels = []
+            for customer in self.customer_lookup:
+                name = customer.get("name") or ""
+                phone = customer.get("phone") or ""
+                address = customer.get("address") or ""
+                label = name
+                if phone:
+                    label += f" | {phone}"
+                if address:
+                    label += f" | {address}"
+                labels.append(label)
+
+            model = QStringListModel(labels)
+            completer = QCompleter(model, self)
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchContains)
+            completer.setCompletionMode(QCompleter.PopupCompletion)
+            completer.activated[str].connect(self.apply_customer_suggestion)
+            self.customer_name.setCompleter(completer)
+            self.customer_name.textEdited.connect(self.on_customer_text_edited)
+            self.customer_completer = completer
+        except Exception:
+            self.customer_lookup = []
+
+    def on_customer_text_edited(self, text: str):
+        typed = text.strip().lower()
+        if not typed:
+            return
+        for customer in self.customer_lookup:
+            name = (customer.get("name") or "").strip().lower()
+            phone = (customer.get("phone") or "").strip().lower()
+            if typed == name or (phone and typed == phone):
+                self.fill_customer(customer)
+                break
+
+    def apply_customer_suggestion(self, label: str):
+        selected_name = label.split("|", 1)[0].strip()
+        for customer in self.customer_lookup:
+            if (customer.get("name") or "").strip() == selected_name:
+                self.fill_customer(customer)
+                return
+        self.customer_name.setText(selected_name)
+
+    def fill_customer(self, customer):
+        self.customer_name.setText(customer.get("name") or "")
+        self.customer_phone.setText(customer.get("phone") or "")
+        self.initial_customer = customer
+
+    def populate_customer(self):
+        self.customer_name.setText(self.initial_customer.get("name") or "")
+        self.customer_phone.setText(self.initial_customer.get("phone") or "")
+
+    def populate_order(self):
+        self.customer_name.setText(self.order.get("customer_name") or "")
+        self.customer_phone.setText(self.order.get("customer_phone") or "")
+        self.order_name.setText(self.order.get("order_name") or "")
+        self.notes.setPlainText(self.order.get("notes") or "")
+
+        status = self.order.get("status") or "pending"
+        index = self.status_combo.findData(status)
+        if index >= 0:
+            self.status_combo.setCurrentIndex(index)
+
+        created_at = self.order.get("created_at") or ""
+        if created_at:
+            self.order_date.setDate(QDate.fromString(created_at[:10], "yyyy-MM-dd"))
+        delivery_date = self.order.get("delivery_date") or ""
+        if delivery_date:
+            self.delivery_date.setDate(QDate.fromString(delivery_date[:10], "yyyy-MM-dd"))
+
+        self.items_table.setRowCount(0)
+        items = self.order.get("items") or []
+        if not items:
+            self.add_item_row()
+            return
+
+        import json
+        for line in items:
+            attrs_str = line.get("variant_attributes")
+            is_cat = False
+            if attrs_str:
+                try:
+                    attrs = json.loads(attrs_str) if isinstance(attrs_str, str) else attrs_str
+                    if attrs.get("type") == "category":
+                        is_cat = True
+                except Exception:
+                    pass
+            
+            if is_cat:
+                self.add_category_row()
+                row = self.items_table.rowCount() - 1
+                desc_widget = self.items_table.cellWidget(row, 2)
+                if desc_widget:
+                    desc_widget.setText(line.get("product_name") or "")
+            else:
+                self.add_item_row()
+                row = self.items_table.rowCount() - 1
+                desc_widget = self.items_table.cellWidget(row, 2)
+                if desc_widget:
+                    desc_widget.setText(line.get("product_name") or "")
+                
+                sku_widget = self.items_table.cellWidget(row, 3)
+                if sku_widget:
+                    sku_widget.setText(line.get("variant_sku") or "")
+                
+                origin_widget = self.items_table.cellWidget(row, 4)
+                if origin_widget:
+                    origin_widget.setText(line.get("origin") or "")
+                
+                unit_widget = self.items_table.cellWidget(row, 5)
+                if unit_widget:
+                    unit_widget.setText(line.get("unit") or "")
+                
+                qty_widget = self.items_table.cellWidget(row, 6)
+                if qty_widget:
+                    qty_widget.setValue(float(line.get("quantity") or 0))
+                
+                price_widget = self.items_table.cellWidget(row, 7)
+                if price_widget:
+                    price_widget.setValue(float(line.get("price") or 0))
+                
+                note_widget = self.items_table.cellWidget(row, 9)
+                if note_widget:
+                    note_widget.setText(line.get("note") or "")
+                
+                self.update_line_total(row)
+                
+        self.update_sequence_numbers()
+
+    def get_insert_index(self):
+        row = self.items_table.currentRow()
+        if row >= 0:
+            return row + 1
+        return self.items_table.rowCount()
+
+    def set_row_type(self, row, row_type):
+        item = self.items_table.item(row, 0)
+        if not item:
+            item = QTableWidgetItem("⋮⋮")
+            item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(row, 0, item)
+        item.setData(Qt.UserRole, row_type)
+
+    def get_row_type(self, row):
+        item = self.items_table.item(row, 0)
+        if item:
+            val = item.data(Qt.UserRole)
+            if val:
+                return val
+        return "item"
+
+    def add_category_row(self):
+        insert_idx = self.get_insert_index()
+        self.items_table.insertRow(insert_idx)
+        self.items_table.setRowHeight(insert_idx, 48)
+        self.set_row_type(insert_idx, "category")
+        
+        drag_item = QTableWidgetItem("⋮⋮")
+        drag_item.setTextAlignment(Qt.AlignCenter)
+        drag_item.setForeground(QColor("#D97706"))
+        self.items_table.setItem(insert_idx, 0, drag_item)
+        
+        folder_item = QTableWidgetItem("📁")
+        folder_item.setTextAlignment(Qt.AlignCenter)
+        self.items_table.setItem(insert_idx, 1, folder_item)
+        
+        cat_input = QLineEdit()
+        cat_input.setObjectName("categoryInput")
+        cat_input.setPlaceholderText("Tên danh mục (VD: Tủ điện 1, Thiết bị chính...)")
+        cat_input.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        cat_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #FFFBEB;
+                border: 1px solid #FDE68A;
+                border-radius: 6px;
+                padding: 6px 10px;
+                color: #78350F;
+            }
+            QLineEdit:focus {
+                border: 1px solid #D97706;
+            }
+        """)
+        cat_input.textChanged.connect(self.update_sequence_numbers)
+        self.items_table.setCellWidget(insert_idx, 2, cat_input)
+        
+        self.items_table.setSpan(insert_idx, 2, 1, 6)
+        
+        total_item = QTableWidgetItem("0đ")
+        total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        total_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        total_item.setForeground(QColor("#B45309"))
+        self.items_table.setItem(insert_idx, 8, total_item)
+        
+        self.items_table.setItem(insert_idx, 9, QTableWidgetItem(""))
+        
+        self.items_table.setCurrentCell(insert_idx, 2)
+        self.update_sequence_numbers()
+
+    def add_item_row(self):
+        insert_idx = self.get_insert_index()
+        self.items_table.insertRow(insert_idx)
+        self.items_table.setRowHeight(insert_idx, 62)
+        self.set_row_type(insert_idx, "item")
+        
+        drag_item = QTableWidgetItem("⋮⋮")
+        drag_item.setTextAlignment(Qt.AlignCenter)
+        self.items_table.setItem(insert_idx, 0, drag_item)
+        
+        stt_item = QTableWidgetItem("")
+        stt_item.setTextAlignment(Qt.AlignCenter)
+        self.items_table.setItem(insert_idx, 1, stt_item)
+        
+        self.items_table.setCellWidget(insert_idx, 2, self.table_line_edit("Mô tả sản phẩm..."))
+        self.items_table.setCellWidget(insert_idx, 3, self.table_line_edit("Mã SP"))
+        self.items_table.setCellWidget(insert_idx, 4, self.table_line_edit("VN"))
+        self.items_table.setCellWidget(insert_idx, 5, self.table_line_edit("Cái"))
+        
+        quantity = QDoubleSpinBox()
+        quantity.setObjectName("lineItemSpin")
+        quantity.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        quantity.setMaximum(1_000_000)
+        quantity.setValue(1)
+        quantity.setFixedHeight(38)
+        quantity.valueChanged.connect(self.on_line_value_changed)
+        self.items_table.setCellWidget(insert_idx, 6, quantity)
+        
+        price = QDoubleSpinBox()
+        price.setObjectName("lineItemSpin")
+        price.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        price.setMaximum(10_000_000_000)
+        price.setSingleStep(100_000)
+        price.setFixedHeight(38)
+        price.valueChanged.connect(self.on_line_value_changed)
+        self.items_table.setCellWidget(insert_idx, 7, price)
+        
+        total = QTableWidgetItem("0đ")
+        total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.items_table.setItem(insert_idx, 8, total)
+        
+        self.items_table.setCellWidget(insert_idx, 9, self.table_line_edit("Ghi chú"))
+        
+        self.items_table.setCurrentCell(insert_idx, 2)
+        self.update_sequence_numbers()
+
+    def table_line_edit(self, text: str) -> QLineEdit:
+        field = QLineEdit()
+        field.setObjectName("lineItemInput")
+        field.setPlaceholderText(text)
+        if text and text not in {"Mô tả sản phẩm...", "Mã SP", "Ghi chú"}:
+            field.setText(text)
+        field.setFixedHeight(38)
+        return field
+
+    def remove_selected_row(self):
+        row = self.items_table.currentRow()
+        if row >= 0 and self.items_table.rowCount() > 1:
+            self.items_table.removeRow(row)
+            self.update_sequence_numbers()
+
+    def on_line_value_changed(self):
+        widget = self.sender()
+        if not widget:
+            return
+        for row in range(self.items_table.rowCount()):
+            if (self.items_table.cellWidget(row, 6) == widget or 
+                self.items_table.cellWidget(row, 7) == widget):
+                self.update_line_total(row)
+                break
+
+    def update_line_total(self, row):
+        row_type = self.get_row_type(row)
+        if row_type == "category":
+            self.update_category_total(row)
+            return
+            
+        qty_widget = self.items_table.cellWidget(row, 6)
+        price_widget = self.items_table.cellWidget(row, 7)
+        if not qty_widget or not price_widget:
+            return
+            
+        quantity = qty_widget.value()
+        price = price_widget.value()
+        total = quantity * price
+        
+        item = self.items_table.item(row, 8) or QTableWidgetItem()
+        item.setText(f"{total:,.0f}đ")
+        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.items_table.setItem(row, 8, item)
+        
+        self.update_all_totals()
+
+    def update_category_total(self, cat_row):
+        total = 0
+        for row in range(cat_row + 1, self.items_table.rowCount()):
+            if self.get_row_type(row) == "category":
+                break
+            qty_widget = self.items_table.cellWidget(row, 6)
+            price_widget = self.items_table.cellWidget(row, 7)
+            if qty_widget and price_widget:
+                total += qty_widget.value() * price_widget.value()
+                
+        item = self.items_table.item(cat_row, 8)
+        if not item:
+            item = QTableWidgetItem()
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            item.setForeground(QColor("#B45309"))
+            self.items_table.setItem(cat_row, 8, item)
+        item.setText(f"{total:,.0f}đ")
+
+    def update_all_totals(self):
+        for row in range(self.items_table.rowCount()):
+            if self.get_row_type(row) == "category":
+                self.update_category_total(row)
+        self.update_sequence_numbers()
+
+    def update_sequence_numbers(self):
+        num = 0
+        for row in range(self.items_table.rowCount()):
+            row_type = self.get_row_type(row)
+            if row_type == "category":
+                num = 0
+                folder_item = self.items_table.item(row, 1)
+                if not folder_item:
+                    folder_item = QTableWidgetItem("📁")
+                    folder_item.setTextAlignment(Qt.AlignCenter)
+                    self.items_table.setItem(row, 1, folder_item)
+            else:
+                num += 1
+                item = self.items_table.item(row, 1)
+                if not item:
+                    item = QTableWidgetItem()
+                    item.setTextAlignment(Qt.AlignCenter)
+                    self.items_table.setItem(row, 1, item)
+                item.setText(str(num))
+
+    def move_row(self, from_row, to_row):
+        if from_row == to_row or from_row < 0 or to_row < 0 or from_row >= self.items_table.rowCount() or to_row >= self.items_table.rowCount():
+            return
+            
+        row_type = self.get_row_type(from_row)
+        
+        if row_type == "category":
+            desc_widget = self.items_table.cellWidget(from_row, 2)
+            desc_text = desc_widget.text() if desc_widget else ""
+            total_item = self.items_table.item(from_row, 8)
+            total_text = total_item.text() if total_item else "0đ"
+            
+            self.items_table.removeRow(from_row)
+            self.items_table.insertRow(to_row)
+            self.items_table.setRowHeight(to_row, 48)
+            self.set_row_type(to_row, "category")
+            
+            drag_item = QTableWidgetItem("⋮⋮")
+            drag_item.setTextAlignment(Qt.AlignCenter)
+            drag_item.setForeground(QColor("#D97706"))
+            self.items_table.setItem(to_row, 0, drag_item)
+            
+            folder_item = QTableWidgetItem("📁")
+            folder_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(to_row, 1, folder_item)
+            
+            cat_input = QLineEdit()
+            cat_input.setObjectName("categoryInput")
+            cat_input.setPlaceholderText("Tên danh mục (VD: Tủ điện 1, Thiết bị chính...)")
+            cat_input.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            cat_input.setStyleSheet("""
+                QLineEdit {
+                    background-color: #FFFBEB;
+                    border: 1px solid #FDE68A;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    color: #78350F;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #D97706;
+                }
+            """)
+            cat_input.setText(desc_text)
+            cat_input.textChanged.connect(self.update_sequence_numbers)
+            self.items_table.setCellWidget(to_row, 2, cat_input)
+            self.items_table.setSpan(to_row, 2, 1, 6)
+            
+            total_item_new = QTableWidgetItem(total_text)
+            total_item_new.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            total_item_new.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            total_item_new.setForeground(QColor("#B45309"))
+            self.items_table.setItem(to_row, 8, total_item_new)
+            self.items_table.setItem(to_row, 9, QTableWidgetItem(""))
+        else:
+            desc_widget = self.items_table.cellWidget(from_row, 2)
+            sku_widget = self.items_table.cellWidget(from_row, 3)
+            origin_widget = self.items_table.cellWidget(from_row, 4)
+            unit_widget = self.items_table.cellWidget(from_row, 5)
+            qty_widget = self.items_table.cellWidget(from_row, 6)
+            price_widget = self.items_table.cellWidget(from_row, 7)
+            total_item = self.items_table.item(from_row, 8)
+            note_widget = self.items_table.cellWidget(from_row, 9)
+            
+            desc_text = desc_widget.text() if desc_widget else ""
+            sku_text = sku_widget.text() if sku_widget else ""
+            origin_text = origin_widget.text() if origin_widget else ""
+            unit_text = unit_widget.text() if unit_widget else ""
+            qty_val = qty_widget.value() if qty_widget else 1.0
+            price_val = price_widget.value() if price_widget else 0.0
+            total_text = total_item.text() if total_item else "0đ"
+            note_text = note_widget.text() if note_widget else ""
+            
+            self.items_table.removeRow(from_row)
+            self.items_table.insertRow(to_row)
+            self.items_table.setRowHeight(to_row, 62)
+            self.set_row_type(to_row, "item")
+            
+            drag_item = QTableWidgetItem("⋮⋮")
+            drag_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(to_row, 0, drag_item)
+            
+            stt_item = QTableWidgetItem("")
+            stt_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(to_row, 1, stt_item)
+            
+            self.items_table.setCellWidget(to_row, 2, self.table_line_edit("Mô tả sản phẩm..."))
+            self.items_table.cellWidget(to_row, 2).setText(desc_text)
+            
+            self.items_table.setCellWidget(to_row, 3, self.table_line_edit("Mã SP"))
+            self.items_table.cellWidget(to_row, 3).setText(sku_text)
+            
+            self.items_table.setCellWidget(to_row, 4, self.table_line_edit("VN"))
+            self.items_table.cellWidget(to_row, 4).setText(origin_text)
+            
+            self.items_table.setCellWidget(to_row, 5, self.table_line_edit("Cái"))
+            self.items_table.cellWidget(to_row, 5).setText(unit_text)
+            
+            quantity = QDoubleSpinBox()
+            quantity.setObjectName("lineItemSpin")
+            quantity.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            quantity.setMaximum(1_000_000)
+            quantity.setValue(qty_val)
+            quantity.setFixedHeight(38)
+            quantity.valueChanged.connect(self.on_line_value_changed)
+            self.items_table.setCellWidget(to_row, 6, quantity)
+            
+            price = QDoubleSpinBox()
+            price.setObjectName("lineItemSpin")
+            price.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            price.setMaximum(10_000_000_000)
+            price.setSingleStep(100_000)
+            price.setValue(price_val)
+            price.setFixedHeight(38)
+            price.valueChanged.connect(self.on_line_value_changed)
+            self.items_table.setCellWidget(to_row, 7, price)
+            
+            total = QTableWidgetItem(total_text)
+            total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.items_table.setItem(to_row, 8, total)
+            
+            self.items_table.setCellWidget(to_row, 9, self.table_line_edit("Ghi chú"))
+            self.items_table.cellWidget(to_row, 9).setText(note_text)
+            
+        self.items_table.setCurrentCell(to_row, 0)
+        self.update_all_totals()
+
+    def accept(self):
+        if not self.customer_name.text().strip():
+            QMessageBox.warning(self, "Thiếu dữ liệu", "Tên khách hàng là bắt buộc.")
+            return
+        if not self.get_items():
+            QMessageBox.warning(self, "Thiếu dữ liệu", "Cần ít nhất một dòng chi tiết sản phẩm.")
+            return
+        super().accept()
+
+    def get_order_data(self):
+        current_name = self.customer_name.text().strip()
+        cust_id = None
+        if self.initial_customer and self.initial_customer.get("name") == current_name:
+            cust_id = self.initial_customer.get("id")
+        elif self.order and self.order.get("customer_name") == current_name:
+            cust_id = self.order.get("customer_id")
+
+        return {
+            "customer_name": current_name,
+            "customer_phone": self.customer_phone.text().strip(),
+            "customer_id": cust_id,
+            "order_name": self.order_name.text().strip(),
+            "status": self.status_combo.currentData(),
+            "order_date": self.order_date.date().toString("yyyy-MM-dd"),
+            "delivery_date": self.delivery_date.date().toString("yyyy-MM-dd"),
+            "notes": self.notes.toPlainText().strip(),
+            "tax_rate": 10,
+            "create_debt": True,
+        }
+
+    def get_items(self):
+        items = []
+        for row in range(self.items_table.rowCount()):
+            row_type = self.get_row_type(row)
+            if row_type == "category":
+                desc_widget = self.items_table.cellWidget(row, 2)
+                description = desc_widget.text().strip() if desc_widget else ""
+                items.append({
+                    "type": "category",
+                    "description": description,
+                })
+            else:
+                desc_widget = self.items_table.cellWidget(row, 2)
+                description = desc_widget.text().strip() if desc_widget else ""
+                if not description:
+                    continue
+                    
+                code_widget = self.items_table.cellWidget(row, 3)
+                origin_widget = self.items_table.cellWidget(row, 4)
+                unit_widget = self.items_table.cellWidget(row, 5)
+                qty_widget = self.items_table.cellWidget(row, 6)
+                price_widget = self.items_table.cellWidget(row, 7)
+                note_widget = self.items_table.cellWidget(row, 9)
+                
+                quantity = qty_widget.value() if qty_widget else 0.0
+                unit_price = price_widget.value() if price_widget else 0.0
+                
+                items.append({
+                    "type": "item",
+                    "description": description,
+                    "product_code": code_widget.text().strip() if code_widget else "",
+                    "origin": origin_widget.text().strip() if origin_widget else "",
+                    "unit": unit_widget.text().strip() if unit_widget else "",
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "line_total": quantity * unit_price,
+                    "note": note_widget.text().strip() if note_widget else "",
+                })
+        return items

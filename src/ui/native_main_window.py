@@ -1,242 +1,243 @@
 # -*- coding: utf-8 -*-
 """
-Main Window - Native PySide6 with modern design
-Matches Vue.js AdminLayout with sidebar navigation
+Main Window - Native PySide6 admin layout.
+Mirrors the Laravel AdminLayout sidebar and header.
 """
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
-    QPushButton, QLabel, QFrame, QScrollArea, QSizePolicy
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QFont, QIcon
 
-from src.ui.pages.dashboard_page import DashboardPage
-from src.ui.pages.orders_page import OrdersPage
-from src.ui.pages.debts_page import DebtsPage
+from src.ui.pages.advances_page import AdvancesPage
 from src.ui.pages.customers_page import CustomersPage
-from src.ui.pages.products_page import ProductsPage
+from src.ui.pages.dashboard_page import DashboardPage
+from src.ui.pages.debts_page import DebtsPage
+from src.ui.pages.orders_page import OrdersPage
+from src.ui.chat_modal import ChatDialog
 
 
 class MainWindow(QMainWindow):
-    """Main window with sidebar navigation (matches Vue.js AdminLayout)"""
-    
-    # Signal for navigation
+    """Main window with the five requested admin tabs."""
+
     page_changed = Signal(str)
-    
+
     def __init__(self, db):
         super().__init__()
         self.db = db
-        
         self.setWindowTitle("Quản lý Công nợ & Đơn hàng B2B")
-        self.setMinimumSize(1600, 1000)
-        
-        # Initialize pages
+        self.setMinimumSize(1120, 700)
+        self.chat_dialog = None
+        self.chat_button = None
+
         self.init_pages()
-        
-        # Setup UI
         self.setup_ui()
-        
+
     def init_pages(self):
-        """Initialize all pages"""
+        """Initialize pages in the same order as the requested sidebar."""
         self.pages = {
-            'dashboard': DashboardPage(self.db),
-            'orders': OrdersPage(self.db),
-            'debts': DebtsPage(self.db),
-            'customers': CustomersPage(self.db),
-            'products': ProductsPage(self.db),
+            "dashboard": DashboardPage(self.db),
+            "customers": CustomersPage(self.db),
+            "orders": OrdersPage(self.db),
+            "debts": DebtsPage(self.db),
+            "advances": AdvancesPage(self.db),
         }
-        
+
     def setup_ui(self):
-        """Setup the main UI layout"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
-        # Sidebar
+
         sidebar = self.create_sidebar()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(260)
+        sidebar.setFixedWidth(220)
         main_layout.addWidget(sidebar)
-        
-        # Main content area
+
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
-        
-        # Top bar
+
         top_bar = self.create_top_bar()
         top_bar.setObjectName("topBar")
-        top_bar.setFixedHeight(64)
+        top_bar.setFixedHeight(52)
         content_layout.addWidget(top_bar)
-        
-        # Pages stack
+
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.setStyleSheet("background-color: #F9FAFB;")
+        self.stacked_widget.setStyleSheet("QStackedWidget { background-color: #F9FAFB; }")
         for page in self.pages.values():
             self.stacked_widget.addWidget(page)
-        content_layout.addWidget(self.stacked_widget)
-        
+        content_layout.addWidget(self.stacked_widget, 1)
+
         main_layout.addWidget(content_widget, 1)
-        
-        # Default to dashboard
-        self.navigate_to('dashboard')
-        
+        self.navigate_to("dashboard")
+        self.create_chat_button()
+
+    def create_chat_button(self):
+        self.chat_button = QPushButton("AI", self.centralWidget())
+        self.chat_button.setObjectName("floatingChatButton")
+        self.chat_button.setFixedSize(58, 58)
+        self.chat_button.setToolTip("Mở AI Assistant")
+        self.chat_button.setCursor(Qt.PointingHandCursor)
+        self.chat_button.clicked.connect(self.open_chat)
+        self.position_chat_button()
+        self.chat_button.raise_()
+
+    def position_chat_button(self):
+        if not self.chat_button:
+            return
+        margin = 28
+        self.chat_button.move(
+            max(0, self.centralWidget().width() - self.chat_button.width() - margin),
+            max(0, self.centralWidget().height() - self.chat_button.height() - margin),
+        )
+
+    def open_chat(self):
+        if self.chat_dialog is None:
+            self.chat_dialog = ChatDialog(self)
+        self.chat_dialog.show()
+        self.chat_dialog.raise_()
+        self.chat_dialog.activateWindow()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.position_chat_button()
+        if self.chat_button:
+            self.chat_button.raise_()
+
     def create_sidebar(self) -> QFrame:
-        """Create sidebar navigation"""
         sidebar = QFrame()
-        sidebar.setObjectName("sidebar")
-        
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Logo/Header
-        header_frame = QFrame()
-        header_frame.setObjectName("sidebarHeader")
-        header_frame.setFixedHeight(70)
-        header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(24, 16, 24, 16)
-        header_layout.setSpacing(4)
-        
-        logo_label = QLabel("⚡ QUẢN LÝ B2B")
-        logo_label.setObjectName("logoLabel")
-        logo_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        header_layout.addWidget(logo_label)
-        
-        subtitle_label = QLabel("Công nợ & Đơn hàng")
-        subtitle_label.setObjectName("subtitleLabel")
-        subtitle_label.setFont(QFont("Segoe UI", 10))
-        header_layout.addWidget(subtitle_label)
-        
-        layout.addWidget(header_frame)
-        
-        # Navigation scroll area
+
+        header = QFrame()
+        header.setObjectName("sidebarHeader")
+        header.setFixedHeight(58)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(16, 0, 16, 0)
+
+        title = QLabel("Admin Panel")
+        title.setObjectName("logoLabel")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        collapse_hint = QLabel("‹")
+        collapse_hint.setObjectName("sidebarChevron")
+        collapse_hint.setAlignment(Qt.AlignCenter)
+        collapse_hint.setFixedWidth(18)
+        header_layout.addWidget(collapse_hint)
+        layout.addWidget(header)
+
         nav_scroll = QScrollArea()
+        nav_scroll.setObjectName("sidebarScroll")
         nav_scroll.setWidgetResizable(True)
         nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        nav_scroll.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: #1E293B;
-                width: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #475569;
-                border-radius: 3px;
-            }
-        """)
-        
+        nav_scroll.viewport().setObjectName("sidebarViewport")
+
         nav_widget = QWidget()
+        nav_widget.setObjectName("sidebarNav")
         nav_layout = QVBoxLayout(nav_widget)
-        nav_layout.setContentsMargins(12, 12, 12, 12)
-        nav_layout.setSpacing(6)
-        
-        # Navigation items
+        nav_layout.setContentsMargins(8, 12, 8, 8)
+        nav_layout.setSpacing(4)
+
         nav_items = [
-            ('dashboard', '📊  Dashboard', 'Dashboard'),
-            ('orders', '📦  Đơn hàng B2B', 'Quản lý đơn hàng'),
-            ('debts', '💰  Công nợ', 'Quản lý công nợ'),
-            ('customers', '👥  Khách hàng', 'Quản lý khách hàng'),
-            ('products', '🛍️  Sản phẩm', 'Quản lý sản phẩm'),
+            ("dashboard", "📊  Dashboard", "Tổng quan hệ thống"),
+            ("customers", "👥  Khách hàng", "Hồ sơ khách hàng"),
+            ("orders", "📦  Theo dõi KD", "Theo dõi đơn hàng kinh doanh"),
+            ("debts", "💰  Công nợ", "Quản lý công nợ"),
+            ("advances", "💵  Tạm ứng", "Quản lý tạm ứng"),
         ]
-        
+
         self.nav_buttons = {}
         for key, label, tooltip in nav_items:
-            btn = self.create_nav_button(label, key, tooltip)
-            nav_layout.addWidget(btn)
-            self.nav_buttons[key] = btn
-            
+            button = self.create_nav_button(label, key, tooltip)
+            nav_layout.addWidget(button)
+            self.nav_buttons[key] = button
+
         nav_layout.addStretch()
-        
         nav_scroll.setWidget(nav_widget)
-        layout.addWidget(nav_scroll)
-        
-        # Footer
-        footer_frame = QFrame()
-        footer_frame.setObjectName("sidebarHeader")
-        footer_frame.setFixedHeight(50)
-        footer_layout = QVBoxLayout(footer_frame)
-        footer_layout.setContentsMargins(24, 10, 24, 10)
-        
-        version_label = QLabel("v1.0 | Python + PySide6")
-        version_label.setFont(QFont("Segoe UI", 9))
-        version_label.setStyleSheet("color: #64748B;")
-        version_label.setAlignment(Qt.AlignCenter)
-        footer_layout.addWidget(version_label)
-        
-        layout.addWidget(footer_frame)
-        
+        layout.addWidget(nav_scroll, 1)
+
+        footer = QFrame()
+        footer.setObjectName("sidebarFooter")
+        footer.setFixedHeight(104)
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(12, 10, 12, 12)
+        footer_layout.setSpacing(8)
+
+        user_row = QHBoxLayout()
+        avatar = QLabel("A")
+        avatar.setObjectName("avatar")
+        avatar.setAlignment(Qt.AlignCenter)
+        avatar.setFixedSize(32, 32)
+        user_row.addWidget(avatar)
+
+        user_text = QVBoxLayout()
+        name = QLabel("Admin")
+        name.setObjectName("sidebarUserName")
+        email = QLabel("Admin@dtshop.com")
+        email.setObjectName("sidebarUserEmail")
+        user_text.addWidget(name)
+        user_text.addWidget(email)
+        user_row.addLayout(user_text, 1)
+        footer_layout.addLayout(user_row)
+
+        logout = QPushButton("Đăng xuất")
+        logout.setObjectName("logoutButton")
+        logout.setCursor(Qt.PointingHandCursor)
+        footer_layout.addWidget(logout)
+        layout.addWidget(footer)
+
         return sidebar
-        
+
     def create_nav_button(self, text: str, key: str, tooltip: str) -> QPushButton:
-        """Create navigation button"""
-        btn = QPushButton(text)
-        btn.setObjectName("navButton")
-        btn.setFixedHeight(48)
-        btn.setToolTip(tooltip)
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setFont(QFont("Segoe UI", 13, QFont.Normal))
-        btn.setCheckable(True)
-        btn.clicked.connect(lambda: self.navigate_to(key))
-        return btn
-        
+        button = QPushButton(text)
+        button.setObjectName("navButton")
+        button.setFixedHeight(40)
+        button.setToolTip(tooltip)
+        button.setCursor(Qt.PointingHandCursor)
+        button.setCheckable(True)
+        button.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
+        button.clicked.connect(lambda: self.navigate_to(key))
+        return button
+
+    def create_top_bar(self) -> QFrame:
+        top_bar = QFrame()
+        layout = QHBoxLayout(top_bar)
+        layout.setContentsMargins(16, 0, 16, 0)
+        layout.addStretch()
+
+        avatar = QLabel("A")
+        avatar.setObjectName("topAvatar")
+        avatar.setAlignment(Qt.AlignCenter)
+        avatar.setFixedSize(32, 32)
+        layout.addWidget(avatar)
+
+        name = QLabel("Admin")
+        name.setObjectName("topUserName")
+        name.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
+        layout.addWidget(name)
+        return top_bar
+
     def navigate_to(self, key: str):
-        """Navigate to a page"""
-        # Update buttons
-        for k, btn in self.nav_buttons.items():
-            btn.setChecked(k == key)
-            
-        # Switch page
+        for page_key, button in self.nav_buttons.items():
+            button.setChecked(page_key == key)
+
         if key in self.pages:
             self.stacked_widget.setCurrentWidget(self.pages[key])
             self.page_changed.emit(key)
-            
-            # Refresh page data
-            if hasattr(self.pages[key], 'refresh_data'):
+            if hasattr(self.pages[key], "refresh_data"):
                 self.pages[key].refresh_data()
-                
-    def create_top_bar(self) -> QFrame:
-        """Create top bar"""
-        top_bar = QFrame()
-        top_bar.setObjectName("topBar")
-        
-        layout = QHBoxLayout(top_bar)
-        layout.setContentsMargins(24, 12, 24, 12)
-        
-        # Page title (will be updated on navigation)
-        self.page_title_label = QLabel("Dashboard")
-        self.page_title_label.setObjectName("pageTitle")
-        self.page_title_label.setFont(QFont("Segoe UI", 20, QFont.Bold))
-        layout.addWidget(self.page_title_label)
-        
-        layout.addStretch()
-        
-        # Date label
-        from datetime import datetime
-        date_label = QLabel(datetime.now().strftime('%d/%m/%Y'))
-        date_label.setFont(QFont("Segoe UI", 12))
-        date_label.setStyleSheet("color: #6B7280;")
-        layout.addWidget(date_label)
-        
-        # Connect page change signal to update title
-        self.page_changed.connect(self.update_page_title)
-        
-        return top_bar
-        
-    def update_page_title(self, page_key: str):
-        """Update page title in top bar"""
-        titles = {
-            'dashboard': 'Dashboard',
-            'orders': 'Đơn hàng B2B',
-            'debts': 'Quản lý Công nợ',
-            'customers': 'Khách hàng',
-            'products': 'Sản phẩm',
-        }
-        self.page_title_label.setText(titles.get(page_key, 'Dashboard'))

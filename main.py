@@ -24,9 +24,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Quản lý Công nợ B2B")
     app.setOrganizationName("B2B Management")
-    app.setStyle("Fusion")
-    
-    # Apply modern QSS theme (matches Vue.js Tailwind design)
+    # Apply modern QSS theme first (Fusion palette conflicts with QSS colors)
     apply_theme(app)
     
     # Set default font

@@ -29,9 +29,15 @@ class OrderService:
     def get_all(self, search: str = "", from_date: str = "", to_date: str = "") -> List[Dict]:
         """Get all B2B orders"""
         query = """
-            SELECT o.*, c.name as customer_full_name
+            SELECT o.*, c.name as customer_full_name,
+                   COUNT(oi.id) as items_count,
+                   d.paid_amount as debt_paid_amount,
+                   d.remaining_amount as debt_remaining_amount,
+                   d.status as debt_status
             FROM orders o
             LEFT JOIN customers c ON o.customer_id = c.id
+            LEFT JOIN order_items oi ON oi.order_id = o.id
+            LEFT JOIN debts d ON d.order_id = o.id
             WHERE o.order_type = 'b2b'
         """
         params = []
@@ -49,7 +55,7 @@ class OrderService:
             query += " AND o.created_at <= ?"
             params.append(to_date)
             
-        query += " ORDER BY o.created_at DESC"
+        query += " GROUP BY o.id ORDER BY o.created_at DESC"
         return self.db.fetch_all(query, tuple(params))
         
     def get_by_id(self, order_id: int) -> Optional[Dict]:
@@ -82,6 +88,15 @@ class OrderService:
         
     def create(self, data: Dict, items: List[Dict]) -> int:
         """Create new B2B order with items"""
+        customer_id = data.get('customer_id')
+        if not customer_id and data.get('customer_name'):
+            customer_id = self.upsert_customer(
+                data.get('customer_name'),
+                data.get('customer_phone'),
+                data.get('customer_email'),
+                data.get('customer_address') or data.get('shipping_address')
+            )
+
         # Calculate totals
         subtotal = sum(
             item.get('line_total', 0) or (item.get('unit_price', 0) * item.get('quantity', 0))
@@ -109,11 +124,11 @@ class OrderService:
         cursor = self.db.execute(query, (
             order_number,
             data.get('order_name'),
-            data.get('customer_id'),
+            customer_id,
             data.get('customer_name'),
             data.get('customer_phone'),
             data.get('customer_email'),
-            data.get('shipping_address'),
+            data.get('shipping_address') or data.get('customer_address'),
             data.get('delivery_date'),
             data.get('notes'),
             subtotal,
@@ -165,11 +180,24 @@ class OrderService:
                     '{"note": "' + (item.get('note', '') or '') + '"}',
                     item.get('note')
                 ))
-                
+
+        initial_payment = min(float(data.get('initial_payment') or 0), grand_total)
+        if data.get('create_debt') or initial_payment > 0:
+            self.create_or_update_debt(order_id, customer_id, grand_total, initial_payment)
+
         return order_id
         
     def update(self, order_id: int, data: Dict, items: List[Dict]) -> bool:
         """Update order and items"""
+        customer_id = data.get('customer_id')
+        if not customer_id and data.get('customer_name'):
+            customer_id = self.upsert_customer(
+                data.get('customer_name'),
+                data.get('customer_phone'),
+                data.get('customer_email'),
+                data.get('customer_address') or data.get('shipping_address')
+            )
+
         # Recalculate totals
         subtotal = sum(
             item.get('line_total', 0) or (item.get('unit_price', 0) * item.get('quantity', 0))
@@ -195,10 +223,10 @@ class OrderService:
             else:
                 payment_status = 'partial'
                 
-            # Update debt original amount
+            # Update debt original amount and customer_id
             self.db.execute(
-                "UPDATE debts SET original_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?",
-                (grand_total, order_id)
+                "UPDATE debts SET original_amount = ?, customer_id = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?",
+                (grand_total, customer_id, order_id)
             )
             self.recalculate_debt(debt['id'])
             
@@ -212,15 +240,18 @@ class OrderService:
         # Update order
         self.db.execute("""
             UPDATE orders 
-            SET order_name=?, customer_name=?, customer_phone=?, notes=?, delivery_date=?,
+            SET order_name=?, customer_id=?, customer_name=?, customer_phone=?, notes=?,
+                created_at=?, delivery_date=?,
                 subtotal=?, total_before_tax=?, tax_amount=?, grand_total=?, total_profit=?,
                 payment_status=?, status=?, updated_at=CURRENT_TIMESTAMP
             WHERE id=?
         """, (
             data.get('order_name'),
+            customer_id,
             data.get('customer_name'),
             data.get('customer_phone'),
             data.get('notes'),
+            data.get('order_date'),
             data.get('delivery_date'),
             subtotal,
             subtotal,
@@ -292,7 +323,7 @@ class OrderService:
                 SUM(total_profit) as total_profit,
                 COUNT(DISTINCT customer_name) as total_customers
             FROM orders
-            WHERE order_type = 'b2b'
+            WHERE order_type = 'b2b' AND status != 'cancelled'
         """)
         
         return {
@@ -305,6 +336,104 @@ class OrderService:
     def generate_sku(self) -> str:
         """Generate random SKU"""
         return ''.join(random.choices(string.ascii_uppercase, k=8))
+
+    def upsert_customer(self, name: str, phone: str = None, email: str = None, address: str = None) -> Optional[int]:
+        """Find or create a customer by name/phone, matching the Laravel flow."""
+        if not name:
+            return None
+
+        customer = None
+        if phone:
+            customer = self.db.fetch_one("SELECT * FROM customers WHERE phone = ?", (phone,))
+        if not customer:
+            customer = self.db.fetch_one("SELECT * FROM customers WHERE name = ?", (name,))
+
+        if customer:
+            updates = {}
+            if phone and not customer.get('phone'):
+                updates['phone'] = phone
+            if email and not customer.get('email'):
+                updates['email'] = email
+            if address and not customer.get('address'):
+                updates['address'] = address
+
+            if updates:
+                fields = ", ".join(f"{key}=?" for key in updates)
+                values = list(updates.values())
+                values.append(customer['id'])
+                self.db.execute(
+                    f"UPDATE customers SET {fields}, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    tuple(values)
+                )
+            return customer['id']
+
+        cursor = self.db.execute(
+            """
+            INSERT INTO customers (name, phone, email, address, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (name, phone, email, address),
+        )
+        return cursor.lastrowid
+
+    def create_or_update_debt(
+        self,
+        order_id: int,
+        customer_id: Optional[int],
+        original_amount: float,
+        paid_amount: float = 0,
+        due_date: str = None,
+        notes: str = None,
+    ) -> int:
+        """Create a debt record and optional first payment for an order."""
+        existing = self.db.fetch_one("SELECT * FROM debts WHERE order_id = ?", (order_id,))
+        if existing:
+            debt_id = existing['id']
+            self.db.execute(
+                """
+                UPDATE debts
+                SET original_amount=?, customer_id=?, due_date=COALESCE(?, due_date),
+                    notes=COALESCE(?, notes), updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (original_amount, customer_id, due_date, notes, debt_id),
+            )
+        else:
+            remaining = max(0, original_amount - paid_amount)
+            status = 'paid' if remaining <= 0 else ('partial' if paid_amount > 0 else 'pending')
+            cursor = self.db.execute(
+                """
+                INSERT INTO debts
+                    (order_id, customer_id, original_amount, paid_amount, remaining_amount, status, due_date, notes)
+                VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+                """,
+                (order_id, customer_id, original_amount, original_amount, status, due_date, notes),
+            )
+            debt_id = cursor.lastrowid
+
+        if paid_amount > 0:
+            self.db.execute(
+                """
+                INSERT INTO debt_payments (debt_id, amount, payment_method, notes, paid_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    debt_id,
+                    paid_amount,
+                    'Tien mat',
+                    'Thanh toan ban dau',
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                ),
+            )
+
+        self.recalculate_debt(debt_id)
+        debt = self.db.fetch_one("SELECT * FROM debts WHERE id = ?", (debt_id,))
+        payment_status = {'paid': 'paid', 'partial': 'partial'}.get(debt['status'], 'unpaid')
+        self.db.execute(
+            "UPDATE orders SET payment_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (payment_status, order_id),
+        )
+        return debt_id
         
     def recalculate_debt(self, debt_id: int):
         """Recalculate debt amounts based on payments (mirrors Laravel Debt::recalculate)"""

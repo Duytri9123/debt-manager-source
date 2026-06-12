@@ -17,7 +17,8 @@ class DebtService:
     def get_all(self, search: str = "", status: str = "") -> List[Dict]:
         """Get all debts with filtering"""
         query = """
-            SELECT d.*, o.order_number, o.grand_total, o.customer_name as order_customer_name,
+            SELECT d.*, o.order_number, o.order_name, o.grand_total, o.created_at as order_created_at,
+                   o.customer_name as order_customer_name,
                    c.name as customer_name
             FROM debts d
             LEFT JOIN orders o ON d.order_id = o.id
@@ -37,6 +38,18 @@ class DebtService:
             
         query += " ORDER BY d.created_at DESC"
         return self.db.fetch_all(query, tuple(params))
+
+    def get_orders_without_debt(self) -> List[Dict]:
+        """Get B2B orders that do not have a debt record yet."""
+        return self.db.fetch_all(
+            """
+            SELECT o.id, o.order_number, o.order_name, o.customer_id, o.customer_name, o.grand_total
+            FROM orders o
+            LEFT JOIN debts d ON d.order_id = o.id
+            WHERE o.order_type = 'b2b' AND d.id IS NULL
+            ORDER BY o.created_at DESC
+            """
+        )
         
     def get_by_id(self, debt_id: int) -> Optional[Dict]:
         """Get debt by ID with payments"""

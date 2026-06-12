@@ -199,6 +199,29 @@ class Database:
                 FOREIGN KEY (debt_id) REFERENCES debts(id) ON DELETE CASCADE
             )
         """)
+
+        # Advances
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS advances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                advance_number TEXT UNIQUE NOT NULL,
+                type TEXT NOT NULL CHECK (type IN ('employee', 'customer', 'supplier')),
+                created_by TEXT,
+                employee_name TEXT,
+                customer_id INTEGER,
+                supplier_name TEXT,
+                advance_date DATE NOT NULL,
+                expected_return_date DATE,
+                amount REAL NOT NULL,
+                returned_amount REAL DEFAULT 0,
+                status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'settled', 'cancelled')),
+                purpose TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id)
+            )
+        """)
         
         # Site Settings
         cursor.execute("""
@@ -218,6 +241,8 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_debts_order ON debts(order_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_debts_status ON debts(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_advances_type ON advances(type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_advances_status ON advances(status)")
         
         # Insert default settings
         cursor.execute("""
