@@ -140,7 +140,7 @@ class OrderService:
             grand_total,
             total_profit,
             data.get('status', 'pending'),
-            'unpaid',
+            data.get('payment_status', 'unpaid'),
             'b2b',
             data.get('order_date', datetime.now().strftime('%Y-%m-%d'))
         ))
@@ -158,9 +158,9 @@ class OrderService:
             else:
                 self.db.execute("""
                     INSERT INTO order_items 
-                        (order_id, product_name, variant_sku, origin, unit, price, quantity,
-                         cost_price, selling_price, business_pct, profit_per_kg, weight_kg,
-                         total_profit, line_total, variant_attributes, note)
+                    (order_id, product_name, variant_sku, origin, unit, price, quantity,
+                     cost_price, selling_price, business_pct, profit_per_kg, weight_kg,
+                     total_profit, line_total, variant_attributes, note)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     order_id,
@@ -182,8 +182,13 @@ class OrderService:
                 ))
 
         initial_payment = min(float(data.get('initial_payment') or 0), grand_total)
-        if data.get('create_debt') or initial_payment > 0:
-            self.create_or_update_debt(order_id, customer_id, grand_total, initial_payment)
+        payment_status = data.get('payment_status', 'unpaid')
+        if data.get('create_debt') or initial_payment > 0 or payment_status != 'unpaid':
+            self.create_or_update_debt(
+                order_id, customer_id, grand_total, initial_payment,
+                due_date=data.get('delivery_date'), notes=data.get('notes'),
+                payment_status=payment_status
+            )
 
         return order_id
         
@@ -210,32 +215,18 @@ class OrderService:
         grand_total = subtotal + tax_amount
         total_profit = sum(item.get('total_profit', 0) for item in items)
         
-        # Update payment status based on existing debt
-        debt = self.db.fetch_one("SELECT * FROM debts WHERE order_id = ?", (order_id,))
-        payment_status = 'unpaid'
+        # Update payment status based on existing debt or create a new one
+        payment_status = data.get('payment_status', 'unpaid')
+        self.create_or_update_debt(
+            order_id, customer_id, grand_total,
+            due_date=data.get('delivery_date'), notes=data.get('notes'),
+            payment_status=payment_status
+        )
         
+        # Read the calculated status back from the debt record
+        debt = self.db.fetch_one("SELECT * FROM debts WHERE order_id = ?", (order_id,))
         if debt:
-            paid_amount = debt['paid_amount']
-            if paid_amount <= 0:
-                payment_status = 'unpaid'
-            elif paid_amount >= grand_total:
-                payment_status = 'paid'
-            else:
-                payment_status = 'partial'
-                
-            # Update debt original amount and customer_id
-            self.db.execute(
-                "UPDATE debts SET original_amount = ?, customer_id = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?",
-                (grand_total, customer_id, order_id)
-            )
-            self.recalculate_debt(debt['id'])
-            
-            # Read updated debt status
-            debt_updated = self.db.fetch_one("SELECT * FROM debts WHERE id = ?", (debt['id'],))
-            payment_status = {
-                'paid': 'paid',
-                'partial': 'partial'
-            }.get(debt_updated['status'], 'unpaid')
+            payment_status = {'paid': 'paid', 'partial': 'partial'}.get(debt['status'], 'unpaid')
         
         # Update order
         self.db.execute("""
@@ -384,11 +375,34 @@ class OrderService:
         paid_amount: float = 0,
         due_date: str = None,
         notes: str = None,
+        payment_status: str = 'unpaid',
     ) -> int:
         """Create a debt record and optional first payment for an order."""
+        if payment_status == 'paid':
+            paid_amount = original_amount
+        elif payment_status == 'unpaid':
+            paid_amount = 0
+
         existing = self.db.fetch_one("SELECT * FROM debts WHERE order_id = ?", (order_id,))
         if existing:
             debt_id = existing['id']
+            if payment_status == 'paid' and existing['remaining_amount'] > 0:
+                self.db.execute(
+                    """
+                    INSERT INTO debt_payments (debt_id, amount, payment_method, notes, paid_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        debt_id,
+                        existing['remaining_amount'],
+                        'Tien mat',
+                        'Cap nhat thanh toan',
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    ),
+                )
+            elif payment_status == 'unpaid' and existing['paid_amount'] > 0:
+                self.db.execute("DELETE FROM debt_payments WHERE debt_id = ?", (debt_id,))
+                
             self.db.execute(
                 """
                 UPDATE debts
@@ -411,27 +425,27 @@ class OrderService:
             )
             debt_id = cursor.lastrowid
 
-        if paid_amount > 0:
-            self.db.execute(
-                """
-                INSERT INTO debt_payments (debt_id, amount, payment_method, notes, paid_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    debt_id,
-                    paid_amount,
-                    'Tien mat',
-                    'Thanh toan ban dau',
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                ),
-            )
+            if paid_amount > 0:
+                self.db.execute(
+                    """
+                    INSERT INTO debt_payments (debt_id, amount, payment_method, notes, paid_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        debt_id,
+                        paid_amount,
+                        'Tien mat',
+                        'Thanh toan ban dau',
+                        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    ),
+                )
 
         self.recalculate_debt(debt_id)
         debt = self.db.fetch_one("SELECT * FROM debts WHERE id = ?", (debt_id,))
-        payment_status = {'paid': 'paid', 'partial': 'partial'}.get(debt['status'], 'unpaid')
+        payment_status_db = {'paid': 'paid', 'partial': 'partial'}.get(debt['status'], 'unpaid')
         self.db.execute(
             "UPDATE orders SET payment_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (payment_status, order_id),
+            (payment_status_db, order_id),
         )
         return debt_id
         

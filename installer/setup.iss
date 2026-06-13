@@ -41,10 +41,9 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 
 ; ── Output Settings ────────────────────────────────────────────────────────
-OutputDir=installer\Output
+OutputDir=..\Output
 OutputBaseFilename=DebtManager_Setup
-; Comment out icon if file doesn't exist yet
-; SetupIconFile=installer\icon.ico
+SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 ; ── Compression ────────────────────────────────────────────────────────────
@@ -61,7 +60,6 @@ WizardStyle=modern
 WizardSizePercent=100,100
 
 ; ── Language ───────────────────────────────────────────────────────────────
-Languages=en
 
 ; ── Uninstall Settings ─────────────────────────────────────────────────────
 UninstallDisplayName={#MyAppName}
@@ -82,8 +80,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; ── Application Binaries ───────────────────────────────────────────────────
-Source: "Output\DebtManager.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Output\updater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\Output\DebtManager.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\Output\updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 ; NOTE: Don't include source code, database, or user data!
 ; User data should be created dynamically by the application

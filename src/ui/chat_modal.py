@@ -63,6 +63,7 @@ class ChatDialog(QDialog):
         self.full_button = QPushButton("Hiển thị full")
         self.full_button.setObjectName("chatHeaderButton")
         self.full_button.setCursor(Qt.PointingHandCursor)
+        self.full_button.setFocusPolicy(Qt.NoFocus)
         self.full_button.clicked.connect(self.toggle_fullscreen)
         header_layout.addWidget(self.full_button)
 
@@ -102,6 +103,7 @@ class ChatDialog(QDialog):
 
         self.input = QLineEdit()
         self.input.setPlaceholderText("Nhập tin nhắn...")
+        self.input.setProperty("enterKeepsDefault", True)
         self.input.returnPressed.connect(self.send_message)
         input_row.addWidget(self.input, 1)
 

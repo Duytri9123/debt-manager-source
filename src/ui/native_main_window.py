@@ -3,13 +3,14 @@
 Main Window - Native PySide6 admin layout.
 Mirrors the Laravel AdminLayout sidebar and header.
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -23,6 +24,7 @@ from src.ui.pages.dashboard_page import DashboardPage
 from src.ui.pages.debts_page import DebtsPage
 from src.ui.pages.orders_page import OrdersPage
 from src.ui.chat_modal import ChatDialog
+from src.services.update_service import UpdateService
 
 
 class MainWindow(QMainWindow):
@@ -40,6 +42,10 @@ class MainWindow(QMainWindow):
 
         self.init_pages()
         self.setup_ui()
+
+        # Update service
+        self.update_service = UpdateService()
+        self.setup_update_connections()
 
     def init_pages(self):
         """Initialize pages in the same order as the requested sidebar."""
@@ -69,10 +75,9 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        top_bar = self.create_top_bar()
-        top_bar.setObjectName("topBar")
-        top_bar.setFixedHeight(52)
-        content_layout.addWidget(top_bar)
+        # Update notification banner
+        self.update_banner = self.create_update_banner()
+        content_layout.addWidget(self.update_banner)
 
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.setStyleSheet("QStackedWidget { background-color: #F9FAFB; }")
@@ -128,9 +133,9 @@ class MainWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
-        title = QLabel("Admin Panel")
+        title = QLabel("Quản lý công nợ")
         title.setObjectName("logoLabel")
-        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        title.setFont(QFont("Segoe UI", 15, QFont.Bold))
         header_layout.addWidget(title)
         header_layout.addStretch()
 
@@ -171,66 +176,18 @@ class MainWindow(QMainWindow):
         nav_scroll.setWidget(nav_widget)
         layout.addWidget(nav_scroll, 1)
 
-        footer = QFrame()
-        footer.setObjectName("sidebarFooter")
-        footer.setFixedHeight(104)
-        footer_layout = QVBoxLayout(footer)
-        footer_layout.setContentsMargins(12, 10, 12, 12)
-        footer_layout.setSpacing(8)
-
-        user_row = QHBoxLayout()
-        avatar = QLabel("A")
-        avatar.setObjectName("avatar")
-        avatar.setAlignment(Qt.AlignCenter)
-        avatar.setFixedSize(32, 32)
-        user_row.addWidget(avatar)
-
-        user_text = QVBoxLayout()
-        name = QLabel("Admin")
-        name.setObjectName("sidebarUserName")
-        email = QLabel("Admin@dtshop.com")
-        email.setObjectName("sidebarUserEmail")
-        user_text.addWidget(name)
-        user_text.addWidget(email)
-        user_row.addLayout(user_text, 1)
-        footer_layout.addLayout(user_row)
-
-        logout = QPushButton("Đăng xuất")
-        logout.setObjectName("logoutButton")
-        logout.setCursor(Qt.PointingHandCursor)
-        footer_layout.addWidget(logout)
-        layout.addWidget(footer)
-
         return sidebar
 
     def create_nav_button(self, text: str, key: str, tooltip: str) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("navButton")
-        button.setFixedHeight(40)
+        button.setFixedHeight(44)
         button.setToolTip(tooltip)
         button.setCursor(Qt.PointingHandCursor)
         button.setCheckable(True)
-        button.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
+        button.setFont(QFont("Segoe UI", 12, QFont.DemiBold))
         button.clicked.connect(lambda: self.navigate_to(key))
         return button
-
-    def create_top_bar(self) -> QFrame:
-        top_bar = QFrame()
-        layout = QHBoxLayout(top_bar)
-        layout.setContentsMargins(16, 0, 16, 0)
-        layout.addStretch()
-
-        avatar = QLabel("A")
-        avatar.setObjectName("topAvatar")
-        avatar.setAlignment(Qt.AlignCenter)
-        avatar.setFixedSize(32, 32)
-        layout.addWidget(avatar)
-
-        name = QLabel("Admin")
-        name.setObjectName("topUserName")
-        name.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
-        layout.addWidget(name)
-        return top_bar
 
     def navigate_to(self, key: str):
         for page_key, button in self.nav_buttons.items():
@@ -241,3 +198,174 @@ class MainWindow(QMainWindow):
             self.page_changed.emit(key)
             if hasattr(self.pages[key], "refresh_data"):
                 self.pages[key].refresh_data()
+
+    # ──────────────────────────────
+    # Update notification banner
+    # ──────────────────────────────
+
+    def create_update_banner(self) -> QFrame:
+        """Create the update notification banner (hidden by default)."""
+        banner = QFrame()
+        banner.setFixedHeight(48)
+        banner.setStyleSheet("""
+            QFrame {
+                background-color: #1E3A5F;
+                border-bottom: 2px solid #3B82F6;
+            }
+            QLabel {
+                color: #E2E8F0;
+                font-size: 14px;
+            }
+        """)
+        layout = QHBoxLayout(banner)
+        layout.setContentsMargins(20, 5, 20, 5)
+
+        self.update_icon_label = QLabel("\U0001f504")
+        layout.addWidget(self.update_icon_label)
+
+        self.update_message_label = QLabel("Dang kiem tra cap nhat...")
+        layout.addWidget(self.update_message_label, 1)
+
+        self.update_progress = QProgressBar()
+        self.update_progress.setFixedWidth(200)
+        self.update_progress.setFixedHeight(20)
+        self.update_progress.setVisible(False)
+        self.update_progress.setTextVisible(True)
+        self.update_progress.setStyleSheet("""
+            QProgressBar {
+                background-color: #334155;
+                border: none;
+                border-radius: 10px;
+                text-align: center;
+                color: white;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background-color: #3B82F6;
+                border-radius: 10px;
+            }
+        """)
+        layout.addWidget(self.update_progress)
+
+        self.update_action_btn = QPushButton("Cap nhat ngay")
+        self.update_action_btn.setFixedHeight(32)
+        self.update_action_btn.setCursor(Qt.PointingHandCursor)
+        self.update_action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3B82F6;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 5px 16px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2563EB;
+            }
+            QPushButton:disabled {
+                background-color: #475569;
+                color: #94A3B8;
+            }
+        """)
+        self.update_action_btn.setVisible(False)
+        self.update_action_btn.clicked.connect(self.on_update_action_clicked)
+        layout.addWidget(self.update_action_btn)
+
+        self.update_dismiss_btn = QPushButton("\u2715")
+        self.update_dismiss_btn.setFixedSize(28, 28)
+        self.update_dismiss_btn.setCursor(Qt.PointingHandCursor)
+        self.update_dismiss_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #94A3B8;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                color: #E2E8F0;
+            }
+        """)
+        self.update_dismiss_btn.setVisible(False)
+        self.update_dismiss_btn.clicked.connect(lambda: banner.setVisible(False))
+        layout.addWidget(self.update_dismiss_btn)
+
+        banner.setVisible(False)
+        return banner
+
+    def setup_update_connections(self):
+        """Connect update service signals to UI handlers."""
+        svc = self.update_service
+        svc.update_available.connect(self.on_update_available)
+        svc.no_update.connect(self.on_no_update)
+        svc.check_error.connect(self.on_check_error)
+        svc.download_progress.connect(self.on_download_progress)
+        svc.download_complete.connect(self.on_download_complete)
+        svc.download_error.connect(self.on_download_error)
+
+    def check_for_updates(self):
+        """Start update check (called after window is shown)."""
+        self.update_banner.setVisible(True)
+        self.update_icon_label.setText("\U0001f504")
+        self.update_message_label.setText("Dang kiem tra cap nhat...")
+        self.update_action_btn.setVisible(False)
+        self.update_dismiss_btn.setVisible(True)
+        self.update_progress.setVisible(False)
+        self.update_service.check()
+
+    def on_update_available(self, version_info):
+        """Show update banner when new version is found."""
+        version = version_info.get("version", "")
+        mandatory = version_info.get("mandatory", False)
+        self.update_icon_label.setText("\U0001f4e6")
+        self.update_message_label.setText(f"Cap nhat moi v{version} da san sang!")
+        self.update_action_btn.setText("Cap nhat ngay")
+        self.update_action_btn.setEnabled(True)
+        self.update_action_btn.setVisible(True)
+        self.update_progress.setVisible(False)
+        self.update_dismiss_btn.setVisible(not mandatory)
+        self.update_banner.setVisible(True)
+
+    def on_no_update(self):
+        """Hide banner when app is up to date."""
+        self.update_banner.setVisible(False)
+
+    def on_check_error(self, error_msg):
+        """Show error briefly then hide."""
+        self.update_icon_label.setText("\u26a0\ufe0f")
+        self.update_message_label.setText("Khong the kiem tra cap nhat")
+        self.update_action_btn.setVisible(False)
+        self.update_dismiss_btn.setVisible(True)
+        QTimer.singleShot(8000, lambda: self.update_banner.setVisible(False))
+
+    def on_update_action_clicked(self):
+        """Handle update button click."""
+        self.update_action_btn.setEnabled(False)
+        self.update_action_btn.setText("Dang tai...")
+        self.update_progress.setVisible(True)
+        self.update_progress.setValue(0)
+        self.update_service.download_update()
+
+    def on_download_progress(self, percent: int):
+        """Update progress bar during download."""
+        self.update_progress.setValue(percent)
+        self.update_message_label.setText(f"Dang tai ban cap nhat... {percent}%")
+
+    def on_download_complete(self, installer_path: str):
+        """Download finished - start installation."""
+        self.update_progress.setVisible(False)
+        self.update_icon_label.setText("\u2705")
+        self.update_message_label.setText("Da tai xong! Dang cai dat...")
+        self.update_action_btn.setVisible(False)
+        self.update_dismiss_btn.setVisible(False)
+        UpdateService.install_update(installer_path)
+        QTimer.singleShot(2000, self.close)
+
+    def on_download_error(self, error_msg):
+        """Show download error."""
+        self.update_progress.setVisible(False)
+        self.update_icon_label.setText("\u274c")
+        self.update_message_label.setText(f"Tai that bai: {error_msg[:50]}")
+        self.update_action_btn.setText("Thu lai")
+        self.update_action_btn.setEnabled(True)
+        self.update_action_btn.setVisible(True)

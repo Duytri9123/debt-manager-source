@@ -125,10 +125,10 @@ class DebtsPage(QWidget):
 
     def create_table(self):
         table = QTableWidget()
-        table.setColumnCount(7)
+        table.setColumnCount(8)
         table.setHorizontalHeaderLabels([
             "Mã đơn hàng", "Khách hàng", "Số tiền gốc",
-            "Đã thanh toán", "Còn lại", "Trạng thái", "Ngày tạo đơn",
+            "Đã thanh toán", "Còn lại", "Trạng thái", "Ngày tạo đơn", "",
         ])
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -138,6 +138,8 @@ class DebtsPage(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.Interactive)
+        table.setColumnWidth(7, 50)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.verticalHeader().setVisible(False)
@@ -171,7 +173,7 @@ class DebtsPage(QWidget):
             item = QTableWidgetItem("Không có công nợ nào")
             item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(0, 0, item)
-            self.table.setSpan(0, 0, 1, 7)
+            self.table.setSpan(0, 0, 1, 8)
             self.table.setRowHeight(0, 80)
             return
 
@@ -182,6 +184,7 @@ class DebtsPage(QWidget):
             order_name = debt.get("order_name") or debt.get("order_number") or f"#{debt.get('order_id')}"
             code_item = QTableWidgetItem(order_name)
             code_item.setData(Qt.UserRole, debt.get("id"))
+            code_item.setData(Qt.UserRole + 1, debt.get("order_id"))
             code_item.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
             self.table.setItem(row, 0, code_item)
 
@@ -193,6 +196,7 @@ class DebtsPage(QWidget):
             self.table.setItem(row, 4, self.money_item(remaining, "#DC2626" if remaining > 0 else "#6B7280"))
             self.table.setCellWidget(row, 5, self.create_status_badge(debt.get("status", "pending")))
             self.table.setItem(row, 6, QTableWidgetItem(self.format_date(debt.get("order_created_at") or debt.get("created_at"))))
+            self.table.setCellWidget(row, 7, self.create_action_button(debt))
 
     def create_status_badge(self, status):
         labels = {
@@ -227,6 +231,9 @@ class DebtsPage(QWidget):
 
     def add_payment_for_selected(self, *_args):
         row = self.table.currentRow()
+        column = self.table.currentColumn()
+        if column == 7:
+            return
         if row < 0 or not self.table.item(row, 0):
             QMessageBox.information(self, "Thanh toán", "Vui lòng chọn một dòng công nợ.")
             return
@@ -244,6 +251,106 @@ class DebtsPage(QWidget):
                 QMessageBox.information(self, "Thành công", "Đã ghi nhận thanh toán.")
             except Exception as exc:
                 QMessageBox.critical(self, "Lỗi", f"Không thể ghi nhận thanh toán: {exc}")
+
+    def create_action_button(self, debt):
+        btn = QPushButton("⋮")
+        btn.setObjectName("actionMenuButton")
+        btn.setFixedSize(30, 30)
+        btn.setStyleSheet("""
+            QPushButton#actionMenuButton {
+                border: none;
+                background: transparent;
+                font-weight: bold;
+                font-size: 16px;
+                color: #64748B;
+                border-radius: 4px;
+            }
+            QPushButton#actionMenuButton:hover {
+                background-color: #E2E8F0;
+                color: #1E293B;
+            }
+        """)
+        btn.setToolTip("Xóa, chỉnh sửa, xem chi tiết")
+        btn.clicked.connect(lambda: self.show_row_action_menu(btn, debt))
+        return btn
+
+    def show_row_action_menu(self, btn, debt):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+                padding: 4px 0px;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+                color: #334155;
+            }
+            QMenu::item:selected {
+                background-color: #F1F5F9;
+                color: #0F172A;
+            }
+        """)
+        
+        view_action = QAction("Xem chi tiết đơn hàng", self)
+        pay_action = QAction("Ghi nhận thanh toán", self)
+        delete_action = QAction("Xóa công nợ", self)
+        
+        view_action.triggered.connect(lambda: self.open_order_detail_by_id(debt.get("order_id")))
+        pay_action.triggered.connect(lambda: self.add_payment_for_debt(debt.get("id")))
+        delete_action.triggered.connect(lambda: self.delete_debt_by_id(debt))
+        
+        menu.addAction(view_action)
+        menu.addAction(pay_action)
+        menu.addAction(delete_action)
+        
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def open_order_detail_by_id(self, order_id):
+        if not order_id:
+            return
+        from src.ui.pages.orders_page import OrderDetailDialog
+        dialog = OrderDetailDialog(self.db, order_id, self)
+        dialog.exec()
+        self.refresh_data()
+
+    def add_payment_for_debt(self, debt_id):
+        if not debt_id:
+            return
+        dialog = PaymentDialog(self)
+        if dialog.exec():
+            try:
+                from src.services.debt_service import DebtService
+                DebtService(self.db).add_payment(debt_id, dialog.get_data())
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã ghi nhận thanh toán.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể ghi nhận thanh toán: {exc}")
+
+    def delete_debt_by_id(self, debt):
+        debt_id = debt.get("id")
+        order_name = debt.get("order_name") or debt.get("order_number") or ""
+        if not debt_id:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xóa",
+            f"Bạn có chắc chắn muốn xóa công nợ cho đơn hàng {order_name} không?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                from src.services.debt_service import DebtService
+                DebtService(self.db).delete(debt_id)
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã xóa công nợ và cập nhật trạng thái đơn hàng.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể xóa công nợ: {exc}")
 
     @staticmethod
     def money_item(value, color=None):

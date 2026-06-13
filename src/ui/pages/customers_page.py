@@ -99,10 +99,10 @@ class CustomersPage(QWidget):
 
     def create_table(self):
         table = QTableWidget()
-        table.setColumnCount(8)
+        table.setColumnCount(9)
         table.setHorizontalHeaderLabels([
             "Khách hàng", "MST", "Số điện thoại", "Địa chỉ",
-            "Đơn hàng", "Nhập", "Tổng ĐH", "Công nợ",
+            "Đơn hàng", "Nhập", "Tổng ĐH", "Công nợ", "",
         ])
 
         header = table.horizontalHeader()
@@ -114,6 +114,8 @@ class CustomersPage(QWidget):
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.Interactive)
+        table.setColumnWidth(8, 50)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.verticalHeader().setVisible(False)
@@ -151,7 +153,7 @@ class CustomersPage(QWidget):
             item = QTableWidgetItem("Không có khách hàng nào")
             item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(0, 0, item)
-            self.table.setSpan(0, 0, 1, 8)
+            self.table.setSpan(0, 0, 1, 9)
             self.table.setRowHeight(0, 80)
             return
 
@@ -173,6 +175,7 @@ class CustomersPage(QWidget):
             if float(customer.get("remaining_debt") or 0) > 0:
                 debt_item.setForeground(QColor("#DC2626"))
             self.table.setItem(row, 7, debt_item)
+            self.table.setCellWidget(row, 8, self.create_action_button(customer))
 
     def toggle_direction(self):
         self.direction = "asc" if self.direction == "desc" else "desc"
@@ -198,7 +201,9 @@ class CustomersPage(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Lỗi", f"Không thể thêm khách hàng: {exc}")
 
-    def open_customer_detail(self, row, _column):
+    def open_customer_detail(self, row, column):
+        if column == 8:
+            return
         item = self.table.item(row, 0)
         if not item:
             return
@@ -208,6 +213,106 @@ class CustomersPage(QWidget):
         dialog = CustomerDetailDialog(self.db, customer_id, self)
         dialog.exec()
         self.refresh_data()
+
+    def create_action_button(self, customer):
+        btn = QPushButton("⋮")
+        btn.setObjectName("actionMenuButton")
+        btn.setFixedSize(30, 30)
+        btn.setStyleSheet("""
+            QPushButton#actionMenuButton {
+                border: none;
+                background: transparent;
+                font-weight: bold;
+                font-size: 16px;
+                color: #64748B;
+                border-radius: 4px;
+            }
+            QPushButton#actionMenuButton:hover {
+                background-color: #E2E8F0;
+                color: #1E293B;
+            }
+        """)
+        btn.setToolTip("Xóa, chỉnh sửa, xem chi tiết")
+        btn.clicked.connect(lambda: self.show_row_action_menu(btn, customer))
+        return btn
+
+    def show_row_action_menu(self, btn, customer):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+                padding: 4px 0px;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+                color: #334155;
+            }
+            QMenu::item:selected {
+                background-color: #F1F5F9;
+                color: #0F172A;
+            }
+        """)
+        
+        view_action = QAction("Xem chi tiết", self)
+        edit_action = QAction("Chỉnh sửa", self)
+        delete_action = QAction("Xóa", self)
+        
+        view_action.triggered.connect(lambda: self.open_customer_detail_by_id(customer.get("id")))
+        edit_action.triggered.connect(lambda: self.edit_customer_by_id(customer))
+        delete_action.triggered.connect(lambda: self.delete_customer_by_id(customer))
+        
+        menu.addAction(view_action)
+        menu.addAction(edit_action)
+        menu.addAction(delete_action)
+        
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def open_customer_detail_by_id(self, customer_id):
+        if not customer_id:
+            return
+        dialog = CustomerDetailDialog(self.db, customer_id, self)
+        dialog.exec()
+        self.refresh_data()
+
+    def edit_customer_by_id(self, customer):
+        customer_id = customer.get("id")
+        if not customer_id:
+            return
+        dialog = CustomerDialog(self, customer)
+        if dialog.exec():
+            try:
+                from src.services.customer_service import CustomerService
+                CustomerService(self.db).update(customer_id, dialog.get_data())
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã cập nhật khách hàng.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể cập nhật khách hàng: {exc}")
+
+    def delete_customer_by_id(self, customer):
+        customer_id = customer.get("id")
+        customer_name = customer.get("name") or ""
+        if not customer_id:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xóa",
+            f"Bạn có chắc chắn muốn xóa khách hàng {customer_name} không?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                from src.services.customer_service import CustomerService
+                CustomerService(self.db).delete(customer_id)
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã xóa khách hàng.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể xóa khách hàng: {exc}")
 
     @staticmethod
     def numeric_item(value):

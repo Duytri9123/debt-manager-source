@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Application paths management
-All user data stored in AppData/Local/B2BManagement/
+All user data stored in AppData/Local/DebtManager/
 """
 import os
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 class AppPaths:
     """Manage application paths - never store user data in Program Files"""
     
-    def __init__(self, app_name: str = "B2BManagement"):
+    def __init__(self, app_name: str = "DebtManager"):
         self.app_name = app_name
         
         # Base directories
@@ -20,7 +20,7 @@ class AppPaths:
             self.app_dir = os.path.dirname(sys.executable)
         else:
             # Running as script
-            self.app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         # User data directory (AppData/Local)
         self.local_app_data = os.path.join(
@@ -55,7 +55,7 @@ class AppPaths:
     @property
     def database_path(self) -> str:
         """Main database file"""
-        return os.path.join(self.db_dir, 'app.db')
+        return os.path.join(self.db_dir, 'b2b_management.db')
     
     @property
     def config_path(self) -> str:
@@ -100,7 +100,7 @@ class AppPaths:
     @property
     def update_download_path(self) -> str:
         """Downloaded update file"""
-        return os.path.join(self.updates_dir, 'MyApp_Setup.exe')
+        return os.path.join(self.updates_dir, 'DebtManager_Setup.exe')
     
     @property
     def rollback_dir(self) -> str:
@@ -110,7 +110,7 @@ class AppPaths:
     @property
     def previous_exe_path(self) -> str:
         """Previous version executable"""
-        return os.path.join(self.rollback_dir, 'QuanLyB2B.exe')
+        return os.path.join(self.rollback_dir, 'DebtManager.exe')
     
     def get_temp_path(self, filename: str) -> str:
         """Get temporary file path"""

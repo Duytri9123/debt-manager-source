@@ -29,23 +29,20 @@ a{color:var(--primary);text-decoration:none}
 /* ── SIDEBAR ── */
 .sidebar{position:fixed;top:0;left:0;bottom:0;width:220px;background:var(--sidebar);z-index:100;display:flex;flex-direction:column}
 .sidebar-header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid rgba(148,163,184,.08)}
-.logo{color:#fff;font-size:17px;font-weight:800;letter-spacing:1px}
+.logo{color:#fff;font-size:18px;font-weight:800;letter-spacing:0}
 .sidebar-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 8px 8px}
 .sidebar-scroll::-webkit-scrollbar{width:4px}
 .sidebar-scroll::-webkit-scrollbar-thumb{background:rgba(148,163,184,.3);border-radius:2px}
-.nav-btn{display:flex;align-items:center;gap:10px;width:100%;background:0 0;color:var(--navtext);border:none;border-radius:var(--radius);padding:10px 14px;text-align:left;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;background:0 0;color:var(--navtext);border:none;border-radius:var(--radius);padding:11px 14px;text-align:left;font-size:15px;font-weight:500;cursor:pointer;transition:all .15s}
 .nav-btn:hover{background:rgba(99,102,241,.12);color:#e2e8f0}
 .nav-btn.active{background:var(--primary);color:#fff;font-weight:700}
-.nav-icon{font-size:16px;width:20px;text-align:center}
-.sidebar-footer{border-top:1px solid rgba(148,163,184,.08);padding:12px}
+.nav-icon{font-size:18px;width:22px;text-align:center}
 .user-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .avatar{width:32px;height:32px;background:#312e81;color:#c7d2fe;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
 .user-name{color:#f1f5f9;font-size:13px;font-weight:700}
 .user-email{color:#818cf8;font-size:11px}
 /* ── MAIN ── */
 .main{margin-left:220px;min-height:100vh;display:flex;flex-direction:column}
-.topbar{height:52px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;padding:0 20px;position:sticky;top:0;z-index:50;gap:10px}
-.topbar span{color:var(--muted);font-weight:600;font-size:13px}
 .content{padding:24px;flex:1}
 /* ── TITLES ── */
 .page-title{color:var(--heading);font-size:22px;font-weight:800}
@@ -137,7 +134,7 @@ HTML = """<!DOCTYPE html>
 <title>Quản lý B2B</title><style>{{css|safe}}</style></head>
 <body>
 <div class="sidebar">
-  <div class="sidebar-header"><span class="logo">CÔNG NỢ</span></div>
+  <div class="sidebar-header"><span class="logo">Quản lý công nợ</span></div>
   <div class="sidebar-scroll">
     {% for k,icon,label in nav_items %}
     <button class="nav-btn{%if k==page%} active{%endif%}" onclick="nav('{{k}}')">
@@ -145,12 +142,8 @@ HTML = """<!DOCTYPE html>
     </button>
     {% endfor %}
   </div>
-  <div class="sidebar-footer">
-    <div class="user-row"><div class="avatar">A</div><div><div class="user-name">Admin</div><div class="user-email">admin@b2b.com</div></div></div>
-  </div>
 </div>
 <div class="main">
-  <div class="topbar"><span>{{now.strftime('%d/%m/%Y')}}</span></div>
   <div class="content" id="page-content">{{content|safe}}</div>
 </div>
 <div id="modal-container"></div>

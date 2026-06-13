@@ -22,11 +22,35 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
+)
+
+DRAG_COLUMN = 0
+INDEX_COLUMN = 1
+DESCRIPTION_COLUMN = 2
+SKU_COLUMN = 3
+ORIGIN_COLUMN = 4
+UNIT_COLUMN = 5
+QUANTITY_COLUMN = 6
+PRICE_COLUMN = 7
+TOTAL_COLUMN = 8
+NOTE_COLUMN = 9
+ACTION_COLUMN = 10
+ITEM_TABLE_COLUMNS = 11
+DRAG_HANDLE_TEXT = "☰"
+ITEM_NAV_COLUMNS = (
+    DESCRIPTION_COLUMN,
+    SKU_COLUMN,
+    ORIGIN_COLUMN,
+    UNIT_COLUMN,
+    QUANTITY_COLUMN,
+    PRICE_COLUMN,
+    NOTE_COLUMN,
 )
 
 
@@ -149,10 +173,10 @@ class OrdersPage(QWidget):
 
     def create_table(self):
         table = QTableWidget()
-        table.setColumnCount(8)
+        table.setColumnCount(9)
         table.setHorizontalHeaderLabels([
             "Mã đơn", "Khách hàng", "Tên đơn hàng", "Ngày đặt",
-            "Ngày xuất", "Trạng thái", "Số SP", "Tổng sau thuế",
+            "Ngày xuất", "Trạng thái", "Số SP", "Tổng sau thuế", "",
         ])
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Interactive)
@@ -163,6 +187,7 @@ class OrdersPage(QWidget):
         header.setSectionResizeMode(5, QHeaderView.Interactive)
         header.setSectionResizeMode(6, QHeaderView.Interactive)
         header.setSectionResizeMode(7, QHeaderView.Interactive)
+        header.setSectionResizeMode(8, QHeaderView.Interactive)
         table.setColumnWidth(0, 160) # Mã đơn
         table.setColumnWidth(1, 180) # Khách hàng
         table.setColumnWidth(3, 110) # Ngày đặt
@@ -170,6 +195,7 @@ class OrdersPage(QWidget):
         table.setColumnWidth(5, 120) # Trạng thái
         table.setColumnWidth(6, 90)  # Số SP
         table.setColumnWidth(7, 130) # Tổng sau thuế
+        table.setColumnWidth(8, 50)  # Action column
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.verticalHeader().setVisible(False)
@@ -204,7 +230,7 @@ class OrdersPage(QWidget):
             item = QTableWidgetItem("Chưa có đơn hàng nào")
             item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(0, 0, item)
-            self.table.setSpan(0, 0, 1, 8)
+            self.table.setSpan(0, 0, 1, 9)
             self.table.setRowHeight(0, 80)
             return
 
@@ -218,13 +244,14 @@ class OrdersPage(QWidget):
             code_item.setForeground(QColor("#4F46E5"))
             code_item.setFont(QFont("Consolas", 9, QFont.DemiBold))
             self.table.setItem(row, 0, code_item)
-            self.table.setItem(row, 1, QTableWidgetItem(order.get("customer_name", "")))
+            self.table.setItem(row, 1, QTableWidgetItem(order.get("customer_full_name") or order.get("customer_name") or ""))
             self.table.setItem(row, 2, QTableWidgetItem(order.get("order_name") or "—"))
             self.table.setItem(row, 3, QTableWidgetItem(self.format_date(order.get("created_at"))))
             self.table.setItem(row, 4, QTableWidgetItem(self.format_date(order.get("delivery_date"))))
             self.table.setCellWidget(row, 5, self.create_payment_badge(order))
             self.table.setItem(row, 6, self.center_item(order.get("items_count") or 0))
             self.table.setItem(row, 7, self.money_item(order.get("grand_total") or 0))
+            self.table.setCellWidget(row, 8, self.create_action_button(order))
 
     def create_payment_badge(self, order):
         status = order.get("payment_status") or "unpaid"
@@ -313,7 +340,9 @@ class OrdersPage(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Lỗi", f"Không thể tạo đơn hàng: {exc}")
 
-    def open_order_detail(self, row, _column):
+    def open_order_detail(self, row, column):
+        if column == 8:
+            return
         item = self.table.item(row, 0)
         if not item:
             return
@@ -323,6 +352,109 @@ class OrdersPage(QWidget):
         dialog = OrderDetailDialog(self.db, order_id, self)
         dialog.exec()
         self.refresh_data()
+
+    def create_action_button(self, order):
+        btn = QPushButton("⋮")
+        btn.setObjectName("actionMenuButton")
+        btn.setFixedSize(30, 30)
+        btn.setStyleSheet("""
+            QPushButton#actionMenuButton {
+                border: none;
+                background: transparent;
+                font-weight: bold;
+                font-size: 16px;
+                color: #64748B;
+                border-radius: 4px;
+            }
+            QPushButton#actionMenuButton:hover {
+                background-color: #E2E8F0;
+                color: #1E293B;
+            }
+        """)
+        btn.setToolTip("Xóa, chỉnh sửa, xem chi tiết")
+        btn.clicked.connect(lambda: self.show_row_action_menu(btn, order))
+        return btn
+
+    def show_row_action_menu(self, btn, order):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+        
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+                padding: 4px 0px;
+            }
+            QMenu::item {
+                padding: 6px 20px;
+                color: #334155;
+            }
+            QMenu::item:selected {
+                background-color: #F1F5F9;
+                color: #0F172A;
+            }
+        """)
+        
+        view_action = QAction("Xem chi tiết", self)
+        edit_action = QAction("Chỉnh sửa", self)
+        delete_action = QAction("Xóa", self)
+        
+        view_action.triggered.connect(lambda: self.open_order_detail_by_id(order.get("id")))
+        edit_action.triggered.connect(lambda: self.edit_order_by_id(order))
+        delete_action.triggered.connect(lambda: self.delete_order_by_id(order))
+        
+        menu.addAction(view_action)
+        menu.addAction(edit_action)
+        menu.addAction(delete_action)
+        
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def open_order_detail_by_id(self, order_id):
+        if not order_id:
+            return
+        dialog = OrderDetailDialog(self.db, order_id, self)
+        dialog.exec()
+        self.refresh_data()
+
+    def edit_order_by_id(self, order):
+        order_id = order.get("id")
+        if not order_id:
+            return
+        try:
+            from src.services.order_service import OrderService
+            full_order = OrderService(self.db).get_by_id(order_id)
+            if not full_order:
+                return
+            dialog = OrderDialog(self, full_order)
+            if dialog.exec():
+                OrderService(self.db).update(order_id, dialog.get_order_data(), dialog.get_items())
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã cập nhật đơn hàng.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Lỗi", f"Không thể cập nhật đơn hàng: {exc}")
+
+    def delete_order_by_id(self, order):
+        order_id = order.get("id")
+        order_number = order.get("order_number") or ""
+        if not order_id:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xóa",
+            f"Bạn có chắc chắn muốn xóa đơn hàng {order_number} không?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                from src.services.order_service import OrderService
+                OrderService(self.db).delete(order_id)
+                self.refresh_data()
+                QMessageBox.information(self, "Thành công", "Đã xóa đơn hàng.")
+            except Exception as exc:
+                QMessageBox.critical(self, "Lỗi", f"Không thể xóa đơn hàng: {exc}")
 
     @staticmethod
     def center_item(value):
@@ -396,7 +528,7 @@ class OrderDetailDialog(QDialog):
 
         rows = [
             ("Mã đơn", self.order.get("order_number") or "—"),
-            ("Khách hàng", self.order.get("customer_name") or "—"),
+            ("Khách hàng", self.order.get("customer_full_name") or self.order.get("customer_name") or "—"),
             ("Số điện thoại", self.order.get("customer_phone") or "—"),
             ("Ngày đặt", self.format_date(self.order.get("created_at"))),
             ("Ngày xuất", self.format_date(self.order.get("delivery_date"))),
@@ -573,11 +705,11 @@ class DragDropTableWidget(QTableWidget):
 
     def mousePressEvent(self, event):
         col = self.columnAt(event.position().x())
-        if col == 0:  # Column 0 is the drag handle
+        if col == DRAG_COLUMN:
             row = self.rowAt(event.position().y())
             if row >= 0:
                 self.dragged_row = row
-                self.setCurrentCell(row, 0)
+                self.setCurrentCell(row, DRAG_COLUMN)
         super().mousePressEvent(event)
 
     def dragEnterEvent(self, event):
@@ -642,6 +774,7 @@ class OrderDialog(QDialog):
         self.full_button = QPushButton("Hiển thị full")
         self.full_button.setObjectName("outlineButton")
         self.full_button.setFixedWidth(124)
+        self.full_button.setFocusPolicy(Qt.NoFocus)
         self.full_button.clicked.connect(self.toggle_fullscreen)
         header_layout.addWidget(self.full_button)
         layout.addLayout(header_layout)
@@ -662,9 +795,28 @@ class OrderDialog(QDialog):
         customer_layout.setContentsMargins(14, 10, 14, 12)
         customer_layout.setSpacing(8)
 
+        # Title Layout with toggle button
+        title_layout = QHBoxLayout()
         card_title = QLabel("Thông tin khách hàng")
         card_title.setObjectName("sectionTitle")
-        customer_layout.addWidget(card_title)
+        title_layout.addWidget(card_title)
+        title_layout.addStretch()
+        
+        self.toggle_customer_btn = QPushButton("Thu gọn  ▲")
+        self.toggle_customer_btn.setObjectName("outlineButton")
+        self.toggle_customer_btn.setFixedWidth(100)
+        self.toggle_customer_btn.setFixedHeight(28)
+        self.toggle_customer_btn.setFocusPolicy(Qt.NoFocus)
+        self.toggle_customer_btn.clicked.connect(self.toggle_customer_info)
+        title_layout.addWidget(self.toggle_customer_btn)
+        customer_layout.addLayout(title_layout)
+
+        # Collapsible Fields Container
+        self.customer_fields_container = QWidget()
+        self.customer_fields_container.setObjectName("transparentBlock")
+        customer_fields_layout = QVBoxLayout(self.customer_fields_container)
+        customer_fields_layout.setContentsMargins(0, 0, 0, 0)
+        customer_fields_layout.setSpacing(8)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
@@ -698,7 +850,8 @@ class OrderDialog(QDialog):
 
         for column in range(2):
             grid.setColumnStretch(column, 1)
-        customer_layout.addLayout(grid)
+        customer_fields_layout.addLayout(grid)
+        customer_layout.addWidget(self.customer_fields_container)
         content_layout.addWidget(customer_card)
 
         order_card = QFrame()
@@ -721,6 +874,14 @@ class OrderDialog(QDialog):
         self.status_combo.addItem("Đã hủy", "cancelled")
         self.status_combo.setFixedHeight(38)
         order_grid.addWidget(self.create_field_block("Trạng thái", self.status_combo), 1, 0)
+
+        self.payment_status_combo = QComboBox()
+        self.payment_status_combo.addItem("Chưa thanh toán", "unpaid")
+        self.payment_status_combo.addItem("Thanh toán một phần", "partial")
+        self.payment_status_combo.addItem("Đã thanh toán", "paid")
+        self.payment_status_combo.setFixedHeight(38)
+        order_grid.addWidget(self.create_field_block("Trạng thái thanh toán", self.payment_status_combo), 1, 1)
+
         order_grid.setColumnStretch(0, 1)
         order_grid.setColumnStretch(1, 1)
         order_layout.addLayout(order_grid)
@@ -751,28 +912,31 @@ class OrderDialog(QDialog):
         # Sử dụng DragDropTableWidget thay vì QTableWidget
         self.items_table = DragDropTableWidget()
         self.items_table.parent_dialog = self
-        self.items_table.setColumnCount(10)
+        self.items_table.setColumnCount(ITEM_TABLE_COLUMNS)
         self.items_table.setHorizontalHeaderLabels([
             "Kéo", "TT", "Mô tả chi tiết *", "Mã hàng", "Xuất xứ", "Đơn vị",
-            "Số lượng", "Đơn giá", "Thành tiền", "Ghi chú",
+            "Số lượng", "Đơn giá", "Thành tiền", "Ghi chú", "",
         ])
         header = self.items_table.horizontalHeader()
-        for column in range(10):
+        header.setStretchLastSection(False)
+        for column in range(ITEM_TABLE_COLUMNS):
             header.setSectionResizeMode(column, QHeaderView.Interactive)
-        self.items_table.setColumnWidth(0, 40)   # Kéo
-        self.items_table.setColumnWidth(1, 40)   # TT
-        self.items_table.setColumnWidth(2, 300)  # Mô tả chi tiết *
-        self.items_table.setColumnWidth(3, 110)  # Mã hàng
-        self.items_table.setColumnWidth(4, 90)   # Xuất xứ
-        self.items_table.setColumnWidth(5, 90)   # Đơn vị
-        self.items_table.setColumnWidth(6, 100)  # Số lượng
-        self.items_table.setColumnWidth(7, 120)  # Đơn giá
-        self.items_table.setColumnWidth(8, 120)  # Thành tiền
-        self.items_table.setColumnWidth(9, 130)  # Ghi chú
+        header.setSectionResizeMode(DESCRIPTION_COLUMN, QHeaderView.Stretch)
+        self.items_table.setColumnWidth(DRAG_COLUMN, 42)        # Kéo
+        self.items_table.setColumnWidth(INDEX_COLUMN, 42)       # TT
+        self.items_table.setColumnWidth(DESCRIPTION_COLUMN, 360) # Mô tả chi tiết *
+        self.items_table.setColumnWidth(SKU_COLUMN, 120)        # Mã hàng
+        self.items_table.setColumnWidth(ORIGIN_COLUMN, 90)      # Xuất xứ
+        self.items_table.setColumnWidth(UNIT_COLUMN, 90)        # Đơn vị
+        self.items_table.setColumnWidth(QUANTITY_COLUMN, 100)   # Số lượng
+        self.items_table.setColumnWidth(PRICE_COLUMN, 120)      # Đơn giá
+        self.items_table.setColumnWidth(TOTAL_COLUMN, 130)      # Thành tiền
+        self.items_table.setColumnWidth(NOTE_COLUMN, 150)       # Ghi chú
+        self.items_table.setColumnWidth(ACTION_COLUMN, 48)      # Xóa
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.setShowGrid(False)
         self.items_table.setMinimumHeight(260)
-        self.items_table.setMinimumWidth(940)
+        self.items_table.setMinimumWidth(1100)
         self.items_table.setFocusPolicy(Qt.NoFocus)
         self.items_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         order_layout.addWidget(self.items_table, 1)
@@ -801,6 +965,78 @@ class OrderDialog(QDialog):
         else:
             self.showMaximized()
             self.full_button.setText("Thu nhỏ")
+
+    def toggle_customer_info(self):
+        is_visible = self.customer_fields_container.isVisible()
+        self.customer_fields_container.setVisible(not is_visible)
+        if is_visible:
+            self.toggle_customer_btn.setText("Mở rộng  ▼")
+        else:
+            self.toggle_customer_btn.setText("Thu gọn  ▲")
+
+    def handle_enter_navigation(self, widget: QWidget, backward: bool = False) -> bool:
+        position = self.find_item_widget_position(widget)
+        if position is None:
+            return False
+
+        next_position = (
+            self.previous_item_field_position(*position)
+            if backward
+            else self.next_item_field_position(*position)
+        )
+        if next_position is None:
+            return False
+
+        return self.focus_item_field(*next_position)
+
+    def find_item_widget_position(self, widget: QWidget):
+        for row in range(self.items_table.rowCount()):
+            for column in ITEM_NAV_COLUMNS:
+                cell_widget = self.items_table.cellWidget(row, column)
+                if cell_widget is None:
+                    continue
+                if cell_widget == widget or cell_widget.isAncestorOf(widget):
+                    return row, column
+        return None
+
+    def next_item_field_position(self, row: int, column: int):
+        if self.get_row_type(row) == "item" and column in ITEM_NAV_COLUMNS:
+            index = ITEM_NAV_COLUMNS.index(column)
+            if index + 1 < len(ITEM_NAV_COLUMNS):
+                return row, ITEM_NAV_COLUMNS[index + 1]
+
+        return self.first_item_field_after(row, column)
+
+    def previous_item_field_position(self, row: int, column: int):
+        if self.get_row_type(row) == "item" and column in ITEM_NAV_COLUMNS:
+            index = ITEM_NAV_COLUMNS.index(column)
+            if index > 0:
+                return row, ITEM_NAV_COLUMNS[index - 1]
+
+        for candidate in range(row - 1, -1, -1):
+            if self.get_row_type(candidate) == "category":
+                return candidate, DESCRIPTION_COLUMN
+            return candidate, NOTE_COLUMN
+        return None
+
+    def first_item_field_after(self, row: int, column: int):
+        for candidate in range(row + 1, self.items_table.rowCount()):
+            return candidate, DESCRIPTION_COLUMN
+
+        self.items_table.setCurrentCell(row, column)
+        self.add_item_row()
+        return self.items_table.currentRow(), DESCRIPTION_COLUMN
+
+    def focus_item_field(self, row: int, column: int) -> bool:
+        target = self.items_table.cellWidget(row, column)
+        if target is None:
+            return False
+
+        self.items_table.setCurrentCell(row, column)
+        target.setFocus()
+        if hasattr(target, "selectAll"):
+            target.selectAll()
+        return True
 
     def create_field(self, placeholder: str) -> QLineEdit:
         field = QLineEdit()
@@ -896,6 +1132,11 @@ class OrderDialog(QDialog):
         if index >= 0:
             self.status_combo.setCurrentIndex(index)
 
+        payment_status = self.order.get("payment_status") or "unpaid"
+        index_pay = self.payment_status_combo.findData(payment_status)
+        if index_pay >= 0:
+            self.payment_status_combo.setCurrentIndex(index_pay)
+
         created_at = self.order.get("created_at") or ""
         if created_at:
             self.order_date.setDate(QDate.fromString(created_at[:10], "yyyy-MM-dd"))
@@ -924,37 +1165,37 @@ class OrderDialog(QDialog):
             if is_cat:
                 self.add_category_row()
                 row = self.items_table.rowCount() - 1
-                desc_widget = self.items_table.cellWidget(row, 2)
+                desc_widget = self.items_table.cellWidget(row, DESCRIPTION_COLUMN)
                 if desc_widget:
                     desc_widget.setText(line.get("product_name") or "")
             else:
                 self.add_item_row()
                 row = self.items_table.rowCount() - 1
-                desc_widget = self.items_table.cellWidget(row, 2)
+                desc_widget = self.items_table.cellWidget(row, DESCRIPTION_COLUMN)
                 if desc_widget:
                     desc_widget.setText(line.get("product_name") or "")
                 
-                sku_widget = self.items_table.cellWidget(row, 3)
+                sku_widget = self.items_table.cellWidget(row, SKU_COLUMN)
                 if sku_widget:
                     sku_widget.setText(line.get("variant_sku") or "")
                 
-                origin_widget = self.items_table.cellWidget(row, 4)
+                origin_widget = self.items_table.cellWidget(row, ORIGIN_COLUMN)
                 if origin_widget:
                     origin_widget.setText(line.get("origin") or "")
                 
-                unit_widget = self.items_table.cellWidget(row, 5)
+                unit_widget = self.items_table.cellWidget(row, UNIT_COLUMN)
                 if unit_widget:
                     unit_widget.setText(line.get("unit") or "")
                 
-                qty_widget = self.items_table.cellWidget(row, 6)
+                qty_widget = self.items_table.cellWidget(row, QUANTITY_COLUMN)
                 if qty_widget:
                     qty_widget.setValue(float(line.get("quantity") or 0))
                 
-                price_widget = self.items_table.cellWidget(row, 7)
+                price_widget = self.items_table.cellWidget(row, PRICE_COLUMN)
                 if price_widget:
                     price_widget.setValue(float(line.get("price") or 0))
                 
-                note_widget = self.items_table.cellWidget(row, 9)
+                note_widget = self.items_table.cellWidget(row, NOTE_COLUMN)
                 if note_widget:
                     note_widget.setText(line.get("note") or "")
                 
@@ -968,36 +1209,87 @@ class OrderDialog(QDialog):
             return row + 1
         return self.items_table.rowCount()
 
+    def create_drag_item(self, row_type: str) -> QTableWidgetItem:
+        item = QTableWidgetItem(DRAG_HANDLE_TEXT)
+        item.setTextAlignment(Qt.AlignCenter)
+        item.setFont(QFont("Segoe UI Symbol", 13, QFont.Bold))
+        item.setForeground(QColor("#D97706" if row_type == "category" else "#94A3B8"))
+        item.setData(Qt.UserRole, row_type)
+        return item
+
     def set_row_type(self, row, row_type):
-        item = self.items_table.item(row, 0)
+        item = self.items_table.item(row, DRAG_COLUMN)
         if not item:
-            item = QTableWidgetItem("⋮⋮")
-            item.setTextAlignment(Qt.AlignCenter)
-            self.items_table.setItem(row, 0, item)
+            item = self.create_drag_item(row_type)
+            self.items_table.setItem(row, DRAG_COLUMN, item)
         item.setData(Qt.UserRole, row_type)
 
     def get_row_type(self, row):
-        item = self.items_table.item(row, 0)
+        item = self.items_table.item(row, DRAG_COLUMN)
         if item:
             val = item.data(Qt.UserRole)
             if val:
                 return val
         return "item"
 
+    def clear_row_spans(self, row):
+        for column in range(ITEM_TABLE_COLUMNS):
+            self.items_table.setSpan(row, column, 1, 1)
+
+    def create_delete_button(self) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName("rowDeleteButton")
+        button.setFixedSize(28, 28)
+        button.setToolTip("Xóa dòng")
+        try:
+            button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        except Exception:
+            button.setText("×")
+        button.setStyleSheet("""
+            QPushButton#rowDeleteButton {
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: #EF4444;
+                background: transparent;
+            }
+            QPushButton#rowDeleteButton:hover:enabled {
+                background: #FEF2F2;
+                border-color: #FECACA;
+            }
+            QPushButton#rowDeleteButton:disabled {
+                color: #CBD5E1;
+            }
+        """)
+        button.clicked.connect(lambda _checked=False, btn=button: self.remove_row_for_button(btn))
+        return button
+
+    def set_delete_button(self, row):
+        self.items_table.setCellWidget(row, ACTION_COLUMN, self.create_delete_button())
+
+    def update_delete_buttons(self):
+        can_delete = self.items_table.rowCount() > 1
+        for row in range(self.items_table.rowCount()):
+            button = self.items_table.cellWidget(row, ACTION_COLUMN)
+            if button:
+                button.setEnabled(can_delete)
+
+    def remove_row_for_button(self, button=None):
+        button = button or self.sender()
+        for row in range(self.items_table.rowCount()):
+            if self.items_table.cellWidget(row, ACTION_COLUMN) == button:
+                self.remove_row(row)
+                return
+
     def add_category_row(self):
         insert_idx = self.get_insert_index()
         self.items_table.insertRow(insert_idx)
         self.items_table.setRowHeight(insert_idx, 48)
-        self.set_row_type(insert_idx, "category")
-        
-        drag_item = QTableWidgetItem("⋮⋮")
-        drag_item.setTextAlignment(Qt.AlignCenter)
-        drag_item.setForeground(QColor("#D97706"))
-        self.items_table.setItem(insert_idx, 0, drag_item)
+        self.clear_row_spans(insert_idx)
+        self.items_table.setItem(insert_idx, DRAG_COLUMN, self.create_drag_item("category"))
         
         folder_item = QTableWidgetItem("📁")
         folder_item.setTextAlignment(Qt.AlignCenter)
-        self.items_table.setItem(insert_idx, 1, folder_item)
+        self.items_table.setItem(insert_idx, INDEX_COLUMN, folder_item)
         
         cat_input = QLineEdit()
         cat_input.setObjectName("categoryInput")
@@ -1016,39 +1308,37 @@ class OrderDialog(QDialog):
             }
         """)
         cat_input.textChanged.connect(self.update_sequence_numbers)
-        self.items_table.setCellWidget(insert_idx, 2, cat_input)
+        self.items_table.setCellWidget(insert_idx, DESCRIPTION_COLUMN, cat_input)
         
-        self.items_table.setSpan(insert_idx, 2, 1, 6)
+        self.items_table.setSpan(insert_idx, DESCRIPTION_COLUMN, 1, 6)
         
         total_item = QTableWidgetItem("0đ")
         total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         total_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
         total_item.setForeground(QColor("#B45309"))
-        self.items_table.setItem(insert_idx, 8, total_item)
+        self.items_table.setItem(insert_idx, TOTAL_COLUMN, total_item)
         
-        self.items_table.setItem(insert_idx, 9, QTableWidgetItem(""))
+        self.items_table.setItem(insert_idx, NOTE_COLUMN, QTableWidgetItem(""))
+        self.set_delete_button(insert_idx)
         
-        self.items_table.setCurrentCell(insert_idx, 2)
+        self.items_table.setCurrentCell(insert_idx, DESCRIPTION_COLUMN)
         self.update_sequence_numbers()
 
     def add_item_row(self):
         insert_idx = self.get_insert_index()
         self.items_table.insertRow(insert_idx)
         self.items_table.setRowHeight(insert_idx, 62)
-        self.set_row_type(insert_idx, "item")
-        
-        drag_item = QTableWidgetItem("⋮⋮")
-        drag_item.setTextAlignment(Qt.AlignCenter)
-        self.items_table.setItem(insert_idx, 0, drag_item)
+        self.clear_row_spans(insert_idx)
+        self.items_table.setItem(insert_idx, DRAG_COLUMN, self.create_drag_item("item"))
         
         stt_item = QTableWidgetItem("")
         stt_item.setTextAlignment(Qt.AlignCenter)
-        self.items_table.setItem(insert_idx, 1, stt_item)
+        self.items_table.setItem(insert_idx, INDEX_COLUMN, stt_item)
         
-        self.items_table.setCellWidget(insert_idx, 2, self.table_line_edit("Mô tả sản phẩm..."))
-        self.items_table.setCellWidget(insert_idx, 3, self.table_line_edit("Mã SP"))
-        self.items_table.setCellWidget(insert_idx, 4, self.table_line_edit("VN"))
-        self.items_table.setCellWidget(insert_idx, 5, self.table_line_edit("Cái"))
+        self.items_table.setCellWidget(insert_idx, DESCRIPTION_COLUMN, self.table_line_edit("Mô tả sản phẩm..."))
+        self.items_table.setCellWidget(insert_idx, SKU_COLUMN, self.table_line_edit("Mã SP"))
+        self.items_table.setCellWidget(insert_idx, ORIGIN_COLUMN, self.table_line_edit("VN"))
+        self.items_table.setCellWidget(insert_idx, UNIT_COLUMN, self.table_line_edit("Cái"))
         
         quantity = QDoubleSpinBox()
         quantity.setObjectName("lineItemSpin")
@@ -1057,7 +1347,7 @@ class OrderDialog(QDialog):
         quantity.setValue(1)
         quantity.setFixedHeight(38)
         quantity.valueChanged.connect(self.on_line_value_changed)
-        self.items_table.setCellWidget(insert_idx, 6, quantity)
+        self.items_table.setCellWidget(insert_idx, QUANTITY_COLUMN, quantity)
         
         price = QDoubleSpinBox()
         price.setObjectName("lineItemSpin")
@@ -1066,15 +1356,16 @@ class OrderDialog(QDialog):
         price.setSingleStep(100_000)
         price.setFixedHeight(38)
         price.valueChanged.connect(self.on_line_value_changed)
-        self.items_table.setCellWidget(insert_idx, 7, price)
+        self.items_table.setCellWidget(insert_idx, PRICE_COLUMN, price)
         
         total = QTableWidgetItem("0đ")
         total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.items_table.setItem(insert_idx, 8, total)
+        self.items_table.setItem(insert_idx, TOTAL_COLUMN, total)
         
-        self.items_table.setCellWidget(insert_idx, 9, self.table_line_edit("Ghi chú"))
+        self.items_table.setCellWidget(insert_idx, NOTE_COLUMN, self.table_line_edit("Ghi chú"))
+        self.set_delete_button(insert_idx)
         
-        self.items_table.setCurrentCell(insert_idx, 2)
+        self.items_table.setCurrentCell(insert_idx, DESCRIPTION_COLUMN)
         self.update_sequence_numbers()
 
     def table_line_edit(self, text: str) -> QLineEdit:
@@ -1088,17 +1379,20 @@ class OrderDialog(QDialog):
 
     def remove_selected_row(self):
         row = self.items_table.currentRow()
+        self.remove_row(row)
+
+    def remove_row(self, row):
         if row >= 0 and self.items_table.rowCount() > 1:
             self.items_table.removeRow(row)
-            self.update_sequence_numbers()
+            self.update_all_totals()
 
     def on_line_value_changed(self):
         widget = self.sender()
         if not widget:
             return
         for row in range(self.items_table.rowCount()):
-            if (self.items_table.cellWidget(row, 6) == widget or 
-                self.items_table.cellWidget(row, 7) == widget):
+            if (self.items_table.cellWidget(row, QUANTITY_COLUMN) == widget or
+                self.items_table.cellWidget(row, PRICE_COLUMN) == widget):
                 self.update_line_total(row)
                 break
 
@@ -1108,8 +1402,8 @@ class OrderDialog(QDialog):
             self.update_category_total(row)
             return
             
-        qty_widget = self.items_table.cellWidget(row, 6)
-        price_widget = self.items_table.cellWidget(row, 7)
+        qty_widget = self.items_table.cellWidget(row, QUANTITY_COLUMN)
+        price_widget = self.items_table.cellWidget(row, PRICE_COLUMN)
         if not qty_widget or not price_widget:
             return
             
@@ -1117,10 +1411,10 @@ class OrderDialog(QDialog):
         price = price_widget.value()
         total = quantity * price
         
-        item = self.items_table.item(row, 8) or QTableWidgetItem()
+        item = self.items_table.item(row, TOTAL_COLUMN) or QTableWidgetItem()
         item.setText(f"{total:,.0f}đ")
         item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.items_table.setItem(row, 8, item)
+        self.items_table.setItem(row, TOTAL_COLUMN, item)
         
         self.update_all_totals()
 
@@ -1129,18 +1423,18 @@ class OrderDialog(QDialog):
         for row in range(cat_row + 1, self.items_table.rowCount()):
             if self.get_row_type(row) == "category":
                 break
-            qty_widget = self.items_table.cellWidget(row, 6)
-            price_widget = self.items_table.cellWidget(row, 7)
+            qty_widget = self.items_table.cellWidget(row, QUANTITY_COLUMN)
+            price_widget = self.items_table.cellWidget(row, PRICE_COLUMN)
             if qty_widget and price_widget:
                 total += qty_widget.value() * price_widget.value()
                 
-        item = self.items_table.item(cat_row, 8)
+        item = self.items_table.item(cat_row, TOTAL_COLUMN)
         if not item:
             item = QTableWidgetItem()
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             item.setFont(QFont("Segoe UI", 10, QFont.Bold))
             item.setForeground(QColor("#B45309"))
-            self.items_table.setItem(cat_row, 8, item)
+            self.items_table.setItem(cat_row, TOTAL_COLUMN, item)
         item.setText(f"{total:,.0f}đ")
 
     def update_all_totals(self):
@@ -1155,19 +1449,20 @@ class OrderDialog(QDialog):
             row_type = self.get_row_type(row)
             if row_type == "category":
                 num = 0
-                folder_item = self.items_table.item(row, 1)
+                folder_item = self.items_table.item(row, INDEX_COLUMN)
                 if not folder_item:
                     folder_item = QTableWidgetItem("📁")
                     folder_item.setTextAlignment(Qt.AlignCenter)
-                    self.items_table.setItem(row, 1, folder_item)
+                    self.items_table.setItem(row, INDEX_COLUMN, folder_item)
             else:
                 num += 1
-                item = self.items_table.item(row, 1)
+                item = self.items_table.item(row, INDEX_COLUMN)
                 if not item:
                     item = QTableWidgetItem()
                     item.setTextAlignment(Qt.AlignCenter)
-                    self.items_table.setItem(row, 1, item)
+                    self.items_table.setItem(row, INDEX_COLUMN, item)
                 item.setText(str(num))
+        self.update_delete_buttons()
 
     def move_row(self, from_row, to_row):
         if from_row == to_row or from_row < 0 or to_row < 0 or from_row >= self.items_table.rowCount() or to_row >= self.items_table.rowCount():
@@ -1176,24 +1471,20 @@ class OrderDialog(QDialog):
         row_type = self.get_row_type(from_row)
         
         if row_type == "category":
-            desc_widget = self.items_table.cellWidget(from_row, 2)
+            desc_widget = self.items_table.cellWidget(from_row, DESCRIPTION_COLUMN)
             desc_text = desc_widget.text() if desc_widget else ""
-            total_item = self.items_table.item(from_row, 8)
+            total_item = self.items_table.item(from_row, TOTAL_COLUMN)
             total_text = total_item.text() if total_item else "0đ"
             
             self.items_table.removeRow(from_row)
             self.items_table.insertRow(to_row)
             self.items_table.setRowHeight(to_row, 48)
-            self.set_row_type(to_row, "category")
-            
-            drag_item = QTableWidgetItem("⋮⋮")
-            drag_item.setTextAlignment(Qt.AlignCenter)
-            drag_item.setForeground(QColor("#D97706"))
-            self.items_table.setItem(to_row, 0, drag_item)
+            self.clear_row_spans(to_row)
+            self.items_table.setItem(to_row, DRAG_COLUMN, self.create_drag_item("category"))
             
             folder_item = QTableWidgetItem("📁")
             folder_item.setTextAlignment(Qt.AlignCenter)
-            self.items_table.setItem(to_row, 1, folder_item)
+            self.items_table.setItem(to_row, INDEX_COLUMN, folder_item)
             
             cat_input = QLineEdit()
             cat_input.setObjectName("categoryInput")
@@ -1213,24 +1504,25 @@ class OrderDialog(QDialog):
             """)
             cat_input.setText(desc_text)
             cat_input.textChanged.connect(self.update_sequence_numbers)
-            self.items_table.setCellWidget(to_row, 2, cat_input)
-            self.items_table.setSpan(to_row, 2, 1, 6)
+            self.items_table.setCellWidget(to_row, DESCRIPTION_COLUMN, cat_input)
+            self.items_table.setSpan(to_row, DESCRIPTION_COLUMN, 1, 6)
             
             total_item_new = QTableWidgetItem(total_text)
             total_item_new.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             total_item_new.setFont(QFont("Segoe UI", 10, QFont.Bold))
             total_item_new.setForeground(QColor("#B45309"))
-            self.items_table.setItem(to_row, 8, total_item_new)
-            self.items_table.setItem(to_row, 9, QTableWidgetItem(""))
+            self.items_table.setItem(to_row, TOTAL_COLUMN, total_item_new)
+            self.items_table.setItem(to_row, NOTE_COLUMN, QTableWidgetItem(""))
+            self.set_delete_button(to_row)
         else:
-            desc_widget = self.items_table.cellWidget(from_row, 2)
-            sku_widget = self.items_table.cellWidget(from_row, 3)
-            origin_widget = self.items_table.cellWidget(from_row, 4)
-            unit_widget = self.items_table.cellWidget(from_row, 5)
-            qty_widget = self.items_table.cellWidget(from_row, 6)
-            price_widget = self.items_table.cellWidget(from_row, 7)
-            total_item = self.items_table.item(from_row, 8)
-            note_widget = self.items_table.cellWidget(from_row, 9)
+            desc_widget = self.items_table.cellWidget(from_row, DESCRIPTION_COLUMN)
+            sku_widget = self.items_table.cellWidget(from_row, SKU_COLUMN)
+            origin_widget = self.items_table.cellWidget(from_row, ORIGIN_COLUMN)
+            unit_widget = self.items_table.cellWidget(from_row, UNIT_COLUMN)
+            qty_widget = self.items_table.cellWidget(from_row, QUANTITY_COLUMN)
+            price_widget = self.items_table.cellWidget(from_row, PRICE_COLUMN)
+            total_item = self.items_table.item(from_row, TOTAL_COLUMN)
+            note_widget = self.items_table.cellWidget(from_row, NOTE_COLUMN)
             
             desc_text = desc_widget.text() if desc_widget else ""
             sku_text = sku_widget.text() if sku_widget else ""
@@ -1244,27 +1536,24 @@ class OrderDialog(QDialog):
             self.items_table.removeRow(from_row)
             self.items_table.insertRow(to_row)
             self.items_table.setRowHeight(to_row, 62)
-            self.set_row_type(to_row, "item")
-            
-            drag_item = QTableWidgetItem("⋮⋮")
-            drag_item.setTextAlignment(Qt.AlignCenter)
-            self.items_table.setItem(to_row, 0, drag_item)
+            self.clear_row_spans(to_row)
+            self.items_table.setItem(to_row, DRAG_COLUMN, self.create_drag_item("item"))
             
             stt_item = QTableWidgetItem("")
             stt_item.setTextAlignment(Qt.AlignCenter)
-            self.items_table.setItem(to_row, 1, stt_item)
+            self.items_table.setItem(to_row, INDEX_COLUMN, stt_item)
             
-            self.items_table.setCellWidget(to_row, 2, self.table_line_edit("Mô tả sản phẩm..."))
-            self.items_table.cellWidget(to_row, 2).setText(desc_text)
+            self.items_table.setCellWidget(to_row, DESCRIPTION_COLUMN, self.table_line_edit("Mô tả sản phẩm..."))
+            self.items_table.cellWidget(to_row, DESCRIPTION_COLUMN).setText(desc_text)
             
-            self.items_table.setCellWidget(to_row, 3, self.table_line_edit("Mã SP"))
-            self.items_table.cellWidget(to_row, 3).setText(sku_text)
+            self.items_table.setCellWidget(to_row, SKU_COLUMN, self.table_line_edit("Mã SP"))
+            self.items_table.cellWidget(to_row, SKU_COLUMN).setText(sku_text)
             
-            self.items_table.setCellWidget(to_row, 4, self.table_line_edit("VN"))
-            self.items_table.cellWidget(to_row, 4).setText(origin_text)
+            self.items_table.setCellWidget(to_row, ORIGIN_COLUMN, self.table_line_edit("VN"))
+            self.items_table.cellWidget(to_row, ORIGIN_COLUMN).setText(origin_text)
             
-            self.items_table.setCellWidget(to_row, 5, self.table_line_edit("Cái"))
-            self.items_table.cellWidget(to_row, 5).setText(unit_text)
+            self.items_table.setCellWidget(to_row, UNIT_COLUMN, self.table_line_edit("Cái"))
+            self.items_table.cellWidget(to_row, UNIT_COLUMN).setText(unit_text)
             
             quantity = QDoubleSpinBox()
             quantity.setObjectName("lineItemSpin")
@@ -1273,7 +1562,7 @@ class OrderDialog(QDialog):
             quantity.setValue(qty_val)
             quantity.setFixedHeight(38)
             quantity.valueChanged.connect(self.on_line_value_changed)
-            self.items_table.setCellWidget(to_row, 6, quantity)
+            self.items_table.setCellWidget(to_row, QUANTITY_COLUMN, quantity)
             
             price = QDoubleSpinBox()
             price.setObjectName("lineItemSpin")
@@ -1283,16 +1572,17 @@ class OrderDialog(QDialog):
             price.setValue(price_val)
             price.setFixedHeight(38)
             price.valueChanged.connect(self.on_line_value_changed)
-            self.items_table.setCellWidget(to_row, 7, price)
+            self.items_table.setCellWidget(to_row, PRICE_COLUMN, price)
             
             total = QTableWidgetItem(total_text)
             total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.items_table.setItem(to_row, 8, total)
+            self.items_table.setItem(to_row, TOTAL_COLUMN, total)
             
-            self.items_table.setCellWidget(to_row, 9, self.table_line_edit("Ghi chú"))
-            self.items_table.cellWidget(to_row, 9).setText(note_text)
+            self.items_table.setCellWidget(to_row, NOTE_COLUMN, self.table_line_edit("Ghi chú"))
+            self.items_table.cellWidget(to_row, NOTE_COLUMN).setText(note_text)
+            self.set_delete_button(to_row)
             
-        self.items_table.setCurrentCell(to_row, 0)
+        self.items_table.setCurrentCell(to_row, DRAG_COLUMN)
         self.update_all_totals()
 
     def accept(self):
@@ -1318,6 +1608,7 @@ class OrderDialog(QDialog):
             "customer_id": cust_id,
             "order_name": self.order_name.text().strip(),
             "status": self.status_combo.currentData(),
+            "payment_status": self.payment_status_combo.currentData(),
             "order_date": self.order_date.date().toString("yyyy-MM-dd"),
             "delivery_date": self.delivery_date.date().toString("yyyy-MM-dd"),
             "notes": self.notes.toPlainText().strip(),
@@ -1330,24 +1621,24 @@ class OrderDialog(QDialog):
         for row in range(self.items_table.rowCount()):
             row_type = self.get_row_type(row)
             if row_type == "category":
-                desc_widget = self.items_table.cellWidget(row, 2)
+                desc_widget = self.items_table.cellWidget(row, DESCRIPTION_COLUMN)
                 description = desc_widget.text().strip() if desc_widget else ""
                 items.append({
                     "type": "category",
                     "description": description,
                 })
             else:
-                desc_widget = self.items_table.cellWidget(row, 2)
+                desc_widget = self.items_table.cellWidget(row, DESCRIPTION_COLUMN)
                 description = desc_widget.text().strip() if desc_widget else ""
                 if not description:
                     continue
                     
-                code_widget = self.items_table.cellWidget(row, 3)
-                origin_widget = self.items_table.cellWidget(row, 4)
-                unit_widget = self.items_table.cellWidget(row, 5)
-                qty_widget = self.items_table.cellWidget(row, 6)
-                price_widget = self.items_table.cellWidget(row, 7)
-                note_widget = self.items_table.cellWidget(row, 9)
+                code_widget = self.items_table.cellWidget(row, SKU_COLUMN)
+                origin_widget = self.items_table.cellWidget(row, ORIGIN_COLUMN)
+                unit_widget = self.items_table.cellWidget(row, UNIT_COLUMN)
+                qty_widget = self.items_table.cellWidget(row, QUANTITY_COLUMN)
+                price_widget = self.items_table.cellWidget(row, PRICE_COLUMN)
+                note_widget = self.items_table.cellWidget(row, NOTE_COLUMN)
                 
                 quantity = qty_widget.value() if qty_widget else 0.0
                 unit_price = price_widget.value() if price_widget else 0.0

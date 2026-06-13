@@ -1,70 +1,38 @@
 """
-Create a simple ICO file for Debt Manager
-This creates a basic 256x256 icon with a professional design
+Create the Windows ICO file from the application logo asset.
 """
-import struct
-from PIL import Image, ImageDraw, ImageFont
 import os
 
-def create_icon(output_path, size=256):
-    """Create a professional icon for Debt Manager"""
-    
-    # Create image with gradient background
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    
-    # Draw rounded rectangle background (dark blue)
-    margin = 20
-    radius = 40
-    draw.rounded_rectangle(
-        [margin, margin, size-margin, size-margin],
-        radius=radius,
-        fill=(30, 64, 175)  # Dark blue
-    )
-    
-    # Draw inner rounded rectangle (lighter blue)
-    inner_margin = 35
-    draw.rounded_rectangle(
-        [inner_margin, inner_margin, size-inner_margin, size-inner_margin],
-        radius=radius-10,
-        fill=(59, 130, 246)  # Lighter blue
-    )
-    
-    # Draw "DM" text in white
-    try:
-        font = ImageFont.truetype("arial.ttf", size=120)
-    except:
-        font = ImageFont.load_default()
-    
-    # Center text
-    text = "DM"
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    x = (size - text_width) // 2
-    y = (size - text_height) // 2 - 10
-    
-    draw.text((x, y), text, fill=(255, 255, 255), font=font)
-    
-    # Add dollar sign at bottom
-    try:
-        small_font = ImageFont.truetype("arial.ttf", size=60)
-    except:
-        small_font = ImageFont.load_default()
-    
-    dollar_text = "$"
-    dollar_bbox = draw.textbbox((0, 0), dollar_text, font=small_font)
-    dollar_width = dollar_bbox[2] - dollar_bbox[0]
-    dollar_x = (size - dollar_width) // 2
-    dollar_y = size - 100
-    
-    draw.text((dollar_x, dollar_y), dollar_text, fill=(255, 255, 255), font=small_font)
-    
-    # Save as ICO
-    img.save(output_path, format='ICO', sizes=[(size, size)])
-    print(f"✅ Icon created: {output_path}")
-    print(f"   Size: {size}x{size}")
+from PIL import Image
+
+
+ICON_SIZES = [256, 128, 64, 48, 32, 16]
+
+
+def square_canvas(image, size):
+    """Fit a logo into a transparent square canvas."""
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    fitted = image.copy()
+    fitted.thumbnail((size, size), Image.Resampling.LANCZOS)
+    x = (size - fitted.width) // 2
+    y = (size - fitted.height) // 2
+    canvas.alpha_composite(fitted, (x, y))
+    return canvas
+
+
+def create_icon(source_path, output_path):
+    """Create a multi-size ICO from the logo PNG."""
+    logo = Image.open(source_path).convert("RGBA")
+    base = square_canvas(logo, ICON_SIZES[0])
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    base.save(output_path, format="ICO", sizes=[(size, size) for size in ICON_SIZES])
+    print(f"Icon created: {output_path}")
+    print(f"Source logo: {source_path}")
+
 
 if __name__ == "__main__":
-    icon_path = os.path.join("installer", "icon.ico")
-    create_icon(icon_path)
+    create_icon(
+        os.path.join("src", "assets", "icon", "logo.png"),
+        os.path.join("installer", "icon.ico"),
+    )

@@ -168,6 +168,18 @@ class DebtService:
         
         return True
         
+    def delete(self, debt_id: int) -> bool:
+        """Delete debt and its payments, resetting order payment status to unpaid"""
+        debt = self.db.fetch_one("SELECT order_id FROM debts WHERE id = ?", (debt_id,))
+        if debt:
+            order_id = debt['order_id']
+            # Delete payments first due to foreign keys
+            self.db.execute("DELETE FROM debt_payments WHERE debt_id = ?", (debt_id,))
+            self.db.execute("DELETE FROM debts WHERE id = ?", (debt_id,))
+            # Reset order payment status to unpaid
+            self.db.execute("UPDATE orders SET payment_status = 'unpaid', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order_id,))
+        return True
+        
     def recalculate_debt(self, debt_id: int):
         """Recalculate debt amounts (mirrors Laravel Debt::recalculate)"""
         debt = self.db.fetch_one("SELECT * FROM debts WHERE id = ?", (debt_id,))

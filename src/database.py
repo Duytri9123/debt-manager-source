@@ -18,7 +18,7 @@ class Database:
         
     def connect(self):
         """Create database connection"""
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         return self.conn

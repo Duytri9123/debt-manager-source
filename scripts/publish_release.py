@@ -80,7 +80,8 @@ class GitHubReleasePublisher:
         Returns:
             True if successful
         """
-        url = f"{self.base_url}/releases/{release_id}/assets"
+        uploads_base = self.base_url.replace("api.github.com", "uploads.github.com")
+        url = f"{uploads_base}/releases/{release_id}/assets"
         
         file_name = Path(file_path).name
         file_size = Path(file_path).stat().st_size

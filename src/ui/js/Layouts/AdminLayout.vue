@@ -3,14 +3,13 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { usePage, router } from '@inertiajs/vue3'
 import {
   LayoutDashboard, CreditCard, Users, Package, FolderOpen,
-  ChevronLeft, ChevronRight, Menu, X, LogOut, Settings,
+  ChevronLeft, ChevronRight, Menu, X, Settings,
   Truck, FileInput, FileOutput, FileText, Wallet, Brain,
   CheckCircle2, AlertCircle, Info, ShoppingCart, Layers, ClipboardList
 } from 'lucide-vue-next'
 import AiChat from '@/Components/AiChat.vue'
 
 const page = usePage()
-const auth  = computed(() => page.props.auth)
 const flash = computed(() => page.props.flash)
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -53,8 +52,6 @@ function navigate(href) {
   router.visit(href)
 }
 
-function logout() { router.post('/admin/logout') }
-
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const toasts = ref([])
 let toastId  = 0
@@ -86,7 +83,7 @@ watch(flash, (val) => {
     ]">
       <!-- Logo -->
       <div class="flex h-14 items-center justify-between px-4 border-b border-slate-700">
-        <span v-if="!collapsed" class="text-white font-bold text-lg truncate">Admin Panel</span>
+        <span v-if="!collapsed" class="text-white font-bold text-xl truncate">Quản lý công nợ</span>
         <button @click="toggleCollapse"
           class="hidden md:flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
           <ChevronLeft v-if="!collapsed" :size="16" />
@@ -99,12 +96,12 @@ watch(flash, (val) => {
         <div v-for="item in navItems" :key="item.href" class="relative group">
           <button @click="navigate(item.href)"
             :class="[
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              'w-full flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium transition-colors',
               isActive(item.href)
                 ? 'bg-indigo-600 text-white'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
             ]">
-            <component :is="item.icon" :size="18" class="shrink-0" />
+            <component :is="item.icon" :size="20" class="shrink-0" />
             <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
           </button>
           <!-- Tooltip khi collapsed -->
@@ -116,46 +113,14 @@ watch(flash, (val) => {
         </div>
       </nav>
 
-      <!-- User info + logout -->
-      <div class="border-t border-slate-700 p-3">
-        <div v-if="!collapsed" class="flex items-center gap-3 mb-2">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white uppercase">
-            {{ auth?.user?.name?.[0] ?? 'A' }}
-          </div>
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-slate-100 truncate">{{ auth?.user?.name }}</p>
-            <p class="text-xs text-slate-400 truncate">{{ auth?.user?.email }}</p>
-          </div>
-        </div>
-        <div class="relative group">
-          <button @click="logout"
-            class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors">
-            <LogOut :size="16" class="shrink-0" />
-            <span v-if="!collapsed">Đăng xuất</span>
-          </button>
-          <div v-if="collapsed"
-            class="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-            Đăng xuất
-          </div>
-        </div>
-      </div>
     </aside>
 
     <!-- Main area -->
     <div :class="['flex flex-col flex-1 min-w-0 transition-all duration-300', collapsed ? 'md:ml-16' : 'md:ml-60']">
-      <!-- Header -->
-      <header class="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-gray-200 bg-white px-4 shadow-sm">
-        <button @click="mobileOpen = true" class="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100">
-          <Menu :size="20" />
-        </button>
-        <div class="flex-1" />
-        <div class="flex items-center gap-2 text-sm text-gray-600">
-          <div class="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600 uppercase">
-            {{ auth?.user?.name?.[0] ?? 'A' }}
-          </div>
-          <span class="hidden sm:block font-medium">{{ auth?.user?.name }}</span>
-        </div>
-      </header>
+      <button @click="mobileOpen = true"
+        class="fixed left-3 top-3 z-40 md:hidden p-2 rounded-lg bg-white text-gray-500 shadow-sm border border-gray-200 hover:bg-gray-100">
+        <Menu :size="20" />
+      </button>
 
       <!-- Page content -->
       <main class="flex-1 overflow-y-auto p-4 lg:p-6">

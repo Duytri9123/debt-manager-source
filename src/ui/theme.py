@@ -101,9 +101,9 @@ QPushButton#navButton {
     color: #94a3b8;
     border: none;
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 11px 14px;
     text-align: left;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
 }
 
@@ -129,7 +129,7 @@ QPushButton#logoutButton {
     border-radius: 10px;
     padding: 10px 14px;
     text-align: left;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
 }
 
